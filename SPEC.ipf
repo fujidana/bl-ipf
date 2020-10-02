@@ -92,8 +92,8 @@ Function SPEC_loadSpecScanFile(filePath, symbPath)
 	endif
 	
 	// Postprocess (optionally draw graphs).
-	NVAR option = SV_postprocess
-	showGraphs(fww, option)
+	Variable action = NumVarOrDefault("SV_postprocess", 5)
+	showGraphs(fww, action)
 
 	return 0
 End
@@ -127,15 +127,21 @@ End
 
 /// @brief Show a dialog to select postprocess action.
 Function SPEC_showConfigDialog()
-	Variable option
+	Variable postprocess, xCol, yCol
 	
-	option = NumVarOrDefault("SV_postprocess", 5)
-	Prompt option, "Action", popup, "Display last scan;Display all scans;Append last scan;Append All Scans;Do nothing;"
-	DoPrompt "Postprocess option", option
+	postprocess = NumVarOrDefault("SV_postprocess", 5)
+	xCol        = NumVarOrDefault("SV_xCol", 0)
+	yCol        = NumVarOrDefault("SV_yCol", -1)
+	Prompt postprocess, "Post-loading Action", popup, "Display last scan;Display all scans;Append last scan;Append All Scans;Do nothing;"
+	Prompt xCol, "Column Index for x-axis (0 by Default)"
+	Prompt yCol, "Column Index for y-axis (-1 by Default)"
+	DoPrompt "Postprocess postprocess", postprocess, xCol, yCol
 	if (V_flag != 0) // cancel
 		return V_flag
 	endif
-	Variable/G SV_postprocess = option
+	Variable/G SV_postprocess = postprocess
+	Variable/G SV_xCol        = xCol
+	Variable/G SV_yCol        = yCol
 	
 	return 0
 End
@@ -235,16 +241,24 @@ Static Function showGraphs(inww, option)
 	Variable option
 	
 	Variable i, n
+	
+	Variable xCol, yCol, xCol2, yCol2
+	xCol = NumVarOrDefault("SV_xCol", 0)
+	yCol = NumVarOrDefault("SV_xCol", -1)
 	n = numpnts(inww)
 	if (option == 1) // display last	
 		WAVE lw = inww[n - 1]
-		Display lw[][DimSize(lw, 1) -  1] vs lw[][0]
+		xCol2 = xCol >= 0 ? xCol : DimSize(lw, 1) + xCol
+		yCol2 = yCol >= 0 ? yCol : DimSize(lw, 1) + yCol
+		Display lw[][yCol2] vs lw[][xCol2]
 		Label bottom GetDimLabel(lw, 1, 0)
 		Label left GetDimLabel(lw, 1, DimSize(lw, 1) -  1)
 	elseif (option == 2)  // display all
 		for (i = 0; i < n; i += 1)
 			WAVE lw = inww[i]
-			Display lw[][DimSize(lw, 1) -  1] vs lw[][0]
+			xCol2 = xCol >= 0 ? xCol : DimSize(lw, 1) + xCol
+			yCol2 = yCol >= 0 ? yCol : DimSize(lw, 1) + yCol
+			Display lw[][yCol2] vs lw[][xCol2]
 			Label bottom GetDimLabel(lw, 1, 0)
 			Label left GetDimLabel(lw, 1, DimSize(lw, 1) -  1)
 		endfor
@@ -254,7 +268,9 @@ Static Function showGraphs(inww, option)
 			Display
 		endif
 		WAVE lw = inww[n - 1]
-		AppendToGraph lw[][DimSize(lw, 1) -  1] vs lw[][0]
+		xCol2 = xCol >= 0 ? xCol : DimSize(lw, 1) + xCol
+		yCol2 = yCol >= 0 ? yCol : DimSize(lw, 1) + yCol
+		AppendToGraph lw[][yCol2] vs lw[][xCol2]
 	elseif (option == 4)  // append all
 		// create an empty window if no graph window exists.		
 		if (strlen(WinList("*", ";", "WIN:1")) == 0)
@@ -262,7 +278,9 @@ Static Function showGraphs(inww, option)
 		endif
 		for (i = 0; i < n; i += 1)
 			WAVE lw = inww[i]
-			AppendToGraph lw[][DimSize(lw, 1) -  1] vs lw[][0]
+			xCol2 = xCol >= 0 ? xCol : DimSize(lw, 1) + xCol
+			yCol2 = yCol >= 0 ? yCol : DimSize(lw, 1) + yCol
+			AppendToGraph lw[][yCol2] vs lw[][xCol2]
 		endfor
 	endif
 	
