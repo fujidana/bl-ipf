@@ -151,6 +151,12 @@ End
 Function SPEC_doActionForDataBrowser(option)
 	Variable option
 
+	if (strlen(GetBrowserSelection(-1)) == 0)
+		printf "[SPEC@%s] Data browser is not open.\r", time()
+		Beep
+		return 1
+	endif
+	
 	Variable i, j
 	String tmpStr
 	i = 0
@@ -165,7 +171,6 @@ Function SPEC_doActionForDataBrowser(option)
 			fww[j] = $tmpStr
 			j += 1
 		endif
-		print tmpStr
 		i += 1
 	while (1)
 	
