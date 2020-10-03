@@ -242,47 +242,61 @@ Static Function showGraphs(inww, option)
 	
 	Variable i, n
 	
-	Variable xCol, yCol, xCol2, yCol2
+	Variable xCol, yCol
 	xCol = NumVarOrDefault("SV_xCol", 0)
-	yCol = NumVarOrDefault("SV_xCol", -1)
+	yCol = NumVarOrDefault("SV_yCol", -1)
 	n = numpnts(inww)
+	
+	if (n == 0)
+		return 1
+	endif
+	
 	if (option == 1) // display last	
-		WAVE lw = inww[n - 1]
-		xCol2 = xCol >= 0 ? xCol : DimSize(lw, 1) + xCol
-		yCol2 = yCol >= 0 ? yCol : DimSize(lw, 1) + yCol
-		Display lw[][yCol2] vs lw[][xCol2]
-		Label bottom GetDimLabel(lw, 1, 0)
-		Label left GetDimLabel(lw, 1, DimSize(lw, 1) -  1)
+		display2DWave(inww[n - 1], xCol, yCol)
 	elseif (option == 2)  // display all
 		for (i = 0; i < n; i += 1)
-			WAVE lw = inww[i]
-			xCol2 = xCol >= 0 ? xCol : DimSize(lw, 1) + xCol
-			yCol2 = yCol >= 0 ? yCol : DimSize(lw, 1) + yCol
-			Display lw[][yCol2] vs lw[][xCol2]
-			Label bottom GetDimLabel(lw, 1, 0)
-			Label left GetDimLabel(lw, 1, DimSize(lw, 1) -  1)
+			display2DWave(inww[i], xCol, yCol)
 		endfor
 	elseif (option == 3) // append last
-		// create an empty window if no graph window exists.		
+		// create an empty window if no graph window exists.
 		if (strlen(WinList("*", ";", "WIN:1")) == 0)
-			Display
+			display2DWave(inww[n - 1], xCol, yCol)
+		else
+			append2DWave(inww[n - 1], xCol, yCol)
 		endif
-		WAVE lw = inww[n - 1]
-		xCol2 = xCol >= 0 ? xCol : DimSize(lw, 1) + xCol
-		yCol2 = yCol >= 0 ? yCol : DimSize(lw, 1) + yCol
-		AppendToGraph lw[][yCol2] vs lw[][xCol2]
 	elseif (option == 4)  // append all
 		// create an empty window if no graph window exists.		
-		if (strlen(WinList("*", ";", "WIN:1")) == 0)
-			Display
-		endif
 		for (i = 0; i < n; i += 1)
-			WAVE lw = inww[i]
-			xCol2 = xCol >= 0 ? xCol : DimSize(lw, 1) + xCol
-			yCol2 = yCol >= 0 ? yCol : DimSize(lw, 1) + yCol
-			AppendToGraph lw[][yCol2] vs lw[][xCol2]
+			if (i == 0 && strlen(WinList("*", ";", "WIN:1")) == 0)
+				display2DWave(inww[i], xCol, yCol)
+			else
+				append2DWave(inww[i], xCol, yCol)
+			endif
 		endfor
 	endif
 	
 	return 0
+End
+
+Static Function display2DWave(inw, xCol, yCol)
+	WAVE inw
+	Variable xCol, yCol
+
+	Variable xCol2, yCol2
+	xCol2 = xCol >= 0 ? xCol : DimSize(inw, 1) + xCol
+	yCol2 = yCol >= 0 ? yCol : DimSize(inw, 1) + yCol
+	Display inw[][yCol2] vs inw[][xCol2]
+	Label bottom GetDimLabel(inw, 1, 0)
+	Label left GetDimLabel(inw, 1, DimSize(inw, 1) -  1)
+End
+
+
+Static Function append2DWave(inw, xCol, yCol)
+	WAVE inw
+	Variable xCol, yCol
+
+	Variable xCol2, yCol2
+	xCol2 = xCol >= 0 ? xCol : DimSize(inw, 1) + xCol
+	yCol2 = yCol >= 0 ? yCol : DimSize(inw, 1) + yCol
+	AppendToGraph inw[][yCol2] vs inw[][xCol2]
 End
