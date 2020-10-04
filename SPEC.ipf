@@ -19,13 +19,13 @@ Static StrConstant ksAllFileFilter = "All Files:*;"
 
 
 Menu "Load Waves"
-	"Open Spec Data File...", /Q, SPEC_openDataFileDialog()
+	"Open Spec Data Files...", /Q, SPEC_openDataFileDialog()
 End
 
 Menu "Macros"
-	"Configure SPEC File Loader...", /Q, SPEC_showConfigDialog()
+	"Configure SPEC Macro Behavior...", /Q, SPEC_showConfigDialog()
 	"-"
-	"Open SPEC Data File...", /Q, SPEC_openDataFileDialog()
+	"Open SPEC Data Files...", /Q, SPEC_openDataFileDialog()
 	"-"
 	"Display Data Browser Selection Separately", /Q, SPEC_doActionForDataBrowser(2)
 	"Display Data Browser Selection Together", /Q, Display; SPEC_doActionForDataBrowser(4)
@@ -33,6 +33,7 @@ Menu "Macros"
 	"-"
 	"Fancy Traces...", /Q, SPEC_showFancyDialog()
 End
+
 
 /// @brief Hook function invoked when a file is dragged onto the Igor Pro icon.
 Static Function BeforeFileOpenHook(refNum, fileNameStr, pathNameStr, fileTypeStr, fileCreatorStr, fileKind)
@@ -52,22 +53,32 @@ End
 
 /// @brief Show a Open Dialog for a SPEC file.
 Function SPEC_openDataFileDialog()
-	Variable refNum
-	String fileFilter, extension
+	Variable i, refNum, errno
+	String fileFilter, fileNameList
 	fileFilter = ksScanFileFilter + ks1dFileFilter + ksAllFileFilter
-	Open/D/R/F=fileFilter refNum
-	if (strlen(S_fileName))
-		extension = ParseFilePath(4, S_fileName, ":", 0, 0)
-		if (cmpstr(extension, "spec", 0) == 0)
-			return SPEC_loadSpecScanFile(S_fileName, "")
-		elseif (cmpstr(extension, "dat", 0) == 0)
-			return SPEC_loadSpec1DFile(S_fileName, "")
-		else
-			return -1
-		endif
-	else
+	Open/D/R/MULT=1/F=fileFilter refNum
+	errno = 0
+	fileNameList = S_fileName
+
+	if (strlen(fileNameList) == 0) // User cancel
 		return -1
 	endif
+
+	for (i = 0; i < ItemsInList(fileNameList, "\r"); i += 1)
+		if (SPEC_loadSpecScanFile(StringFromList(i, fileNameList, "\r"), "") != 0)
+			errno += 1
+		endif
+	endfor
+//		extension = ParseFilePath(4, S_fileName, ":", 0, 0)
+//		if (cmpstr(extension, "spec", 0) == 0)
+//			return SPEC_loadSpecScanFile(S_fileName, "")
+//		elseif (cmpstr(extension, "dat", 0) == 0)
+//			return SPEC_loadSpec1DFile(S_fileName, "")
+//		else
+//			return -1
+//		endif
+	
+	return errno
 End
 
 /// @brief Load a SPEC scan file.
