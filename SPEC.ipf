@@ -23,7 +23,7 @@ Menu "Load Waves"
 End
 
 Menu "Macros"
-	"Configure SPEC Macro Behavior...", /Q, SPEC_showConfigDialog()
+	"Configure SPEC Macro Behavior...", /Q, SPEC_configDialog()
 	"-"
 	"Open SPEC Data Files...", /Q, SPEC_openDataFileDialog()
 	"-"
@@ -31,7 +31,8 @@ Menu "Macros"
 	"Display Data Browser Selection Together", /Q, Display; SPEC_doActionForDataBrowser(4)
 	"Append Data Browser Selection", /Q, SPEC_doActionForDataBrowser(4)
 	"-"
-	"Fancy Traces...", /Q, SPEC_showFancyDialog()
+	"Reselect Columns of Traces...", /Q, SPEC_reselectColumnDialog()
+	"Fancy Traces...", /Q, SPEC_fancyTrancesDialog()
 End
 
 
@@ -137,7 +138,7 @@ End
 
 
 /// @brief Show a dialog to select postprocess action.
-Function SPEC_showConfigDialog()
+Function SPEC_configDialog()
 	Variable postprocess, xCol, yCol
 	
 	postprocess = NumVarOrDefault("SV_postprocess", 5)
@@ -195,8 +196,51 @@ Function SPEC_doActionForDataBrowser(option)
 End
 
 
+/// @brief Show a dialog to reselect column indexes of traces.
+Function SPEC_reselectColumnDialog()
+	String graphNameStr, graphListStr = WinList("*", ";", "WIN:1")
+	if (strlen(graphListStr) == 0)
+		DoAlert 0, "No graph window found."
+		return 1
+	endif
+	graphNameStr = StringFromList(0, graphListStr)
+	
+	Variable i, n, xCol, yCol, xCol2, yCol2
+	String traceNameStr, traceListStr
+	
+	xCol = NumVarOrDefault("SV_xCol", 0)
+	yCol = NumVarOrDefault("SV_yCol", -1)
+	
+	// 0x01: normal graph traces, 0x04: omit hidden traces
+	traceListStr = TraceNameList(graphNameStr, ";", 0x01 | 0x04)
+	n = ItemsInList(traceListStr)
+	Prompt xCol, "Column Index for x-axis (0 by Default)"
+	Prompt yCol, "Column Index for y-axis (-1 by Default)"
+	DoPrompt "Reselect columns of Traces in " + graphNameStr, xCol, yCol
+	if (V_flag != 0) // cancel
+		return V_flag
+	endif
+	
+	for (i = 0; i < n; i += 1)
+		traceNameStr = StringFromList(i, traceListStr)
+		WAVE/Z xWave = XWaveRefFromTrace(graphNameStr, traceNameStr)
+		WAVE/Z yWave = TraceNameToWaveRef(graphNameStr, traceNameStr)
+		
+		if (WaveExists(xWave) && WaveDims(xWave) == 2)
+			xCol2 = xCol >= 0 ? xCol : DimSize(xWave, 1) + xCol
+			ReplaceWave/X trace=$(traceNameStr), xWave[][xCol2]	
+		endif
+		if (WaveExists(yWave) && WaveDims(yWave) == 2)
+			yCol2 = yCol >= 0 ? yCol : DimSize(yWave, 1) + yCol
+			ReplaceWave trace=$(traceNameStr), yWave[][yCol2]	
+		endif
+	endfor
+End
+
+
+
 /// @brief Show a dialog for fancy traces.
-Function SPEC_showFancyDialog()
+Function SPEC_fancyTrancesDialog()
 	String graphNameStr, graphListStr = WinList("*", ";", "WIN:1")
 	if (strlen(graphListStr) == 0)
 		DoAlert 0, "No graph window found."
@@ -225,7 +269,8 @@ Function SPEC_showFancyDialog()
 	
 	Variable i, n, red, green, blue
 	String traceListStr
-	traceListStr = TraceNameList(graphNameStr, ";", 0x01 | 0x05)
+	// 0x01: normal graph traces, 0x04: omit hidden traces
+	traceListStr = TraceNameList(graphNameStr, ";", 0x01 | 0x04)
 	n = ItemsInList(traceListStr)
 	
 	if (cycle == 0)
@@ -250,6 +295,7 @@ Function SPEC_showFancyDialog()
 
 	return 0
 End
+
 
 /// @brief show graphs.
 Static Function showGraphs(inww, option)
