@@ -19,13 +19,14 @@ Static StrConstant ksAllFileFilter = "All Files:*;"
 
 
 Menu "Load Waves"
-	"Open Spec Data Files...", /Q, SPEC_openDataFileDialog()
+	"Open SPEC Scan Files...", /Q, SPEC_openSpecFileDialog()
 End
 
 Menu "Macros"
 	"Configure SPEC Macro Behavior...", /Q, SPEC_configDialog()
 	"-"
-	"Open SPEC Data Files...", /Q, SPEC_openDataFileDialog()
+	"Open SPEC Scan Files...", /Q, SPEC_openSpecFileDialog()
+	"Open 1D Files...",        /Q, SPEC_open1DFileDialog()
 	"-"
 	"Display Data Browser Selection Separately", /Q, SPEC_doActionForDataBrowser(2)
 	"Display Data Browser Selection Together", /Q, Display; SPEC_doActionForDataBrowser(4)
@@ -53,7 +54,7 @@ Static Function BeforeFileOpenHook(refNum, fileNameStr, pathNameStr, fileTypeStr
 End
 
 /// @brief Show a Open Dialog for a SPEC file.
-Function SPEC_openDataFileDialog()
+Function SPEC_openSpecFileDialog()
 	Variable i, refNum, errno
 	String fileFilter, fileNameList
 	fileFilter = ksScanFileFilter + ks1dFileFilter + ksAllFileFilter
@@ -70,17 +71,32 @@ Function SPEC_openDataFileDialog()
 			errno += 1
 		endif
 	endfor
-//		extension = ParseFilePath(4, S_fileName, ":", 0, 0)
-//		if (cmpstr(extension, "spec", 0) == 0)
-//			return SPEC_loadSpecScanFile(S_fileName, "")
-//		elseif (cmpstr(extension, "dat", 0) == 0)
-//			return SPEC_loadSpec1DFile(S_fileName, "")
-//		else
-//			return -1
-//		endif
 	
 	return errno
 End
+
+/// @brief Show a Open Dialog for a SPEC file.
+Function SPEC_open1DFileDialog()
+	Variable i, refNum, errno
+	String fileFilter, fileNameList
+	fileFilter = ks1dFileFilter + ksAllFileFilter
+	Open/D/R/MULT=1/F=fileFilter refNum
+	errno = 0
+	fileNameList = S_fileName
+
+	if (strlen(fileNameList) == 0) // User cancel
+		return -1
+	endif
+
+	for (i = 0; i < ItemsInList(fileNameList, "\r"); i += 1)
+		if (SPEC_load1DFile(StringFromList(i, fileNameList, "\r"), "") != 0)
+			errno += 1
+		endif
+	endfor
+	
+	return errno
+End
+
 
 /// @brief Load a SPEC scan file.
 Function SPEC_loadSpecScanFile(filePath, symbPath)
@@ -112,27 +128,31 @@ End
 
 
 /// @brief Load a SPEC 1D file.
-Function SPEC_loadSpec1DFile(filePath, symbPath)
+Function SPEC_load1DFile(filePath, symbPath)
 	String filePath, symbPath
 	
-	DFREF savedDFR = GetDataFolderDFR()
-	SetDataFolder NewFreeDataFolder()
-	LoadWave/G/M/D/N=spec_tmporary_wave/O/P=$symbPath filePath
-	if (V_flag != 1)
+	if (strlen(symbPath))
+		printf "[SPEC@%s] Loading 1D file: \"%s\" @ %s\r", time(), filePath, symbPath
+	else
+		printf "[SPEC@%s] Loading 1D file: \"%s\"\r", time(), filePath
+	endif
+	
+	WAVE/Z fw = SPEC_IO_load1DFile(filePath, symbPath)
+	if (!WaveExists(fw))
 		print "Error in loading data part."
 		SetDataFolder savedDFR
 		return -1
 	endif
-	WAVE fw_data = $(StringFromList(0, S_waveNames))
-	SetDataFolder savedDFR
 	
-	String baseName = ParseFilePath(3, filePath, ":", 0, 0)
-	Duplicate/O fw_data, $(baseName + "_1d")
-	printf "[SPEC@%s] Successfully loaded. Now matrix wave \'%s\' is in the current data folder.\r", time(), baseName
+	printf "[SPEC@%s] 1D wave was loaded.\r", time()
 	
-	WAVE lw_data = $(baseName + "_1d")
-//	showGraph(lw_data)
-	
+	Make/FREE/WAVE/N=1 fww
+	fww[0] = fw
+
+	// Postprocess (optionally draw graphs).
+	Variable action = NumVarOrDefault("SV_postprocess", 5)
+	showGraphs(fww, action)
+
 	return 0
 End
 

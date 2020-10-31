@@ -108,7 +108,7 @@ Function/WAVE SPEC_IO_loadSpecScanFile(filePath, symbPath)
 
 		// set the wave name to be saved
 //#ifdef IGNORES_SCAN_INDEX
-		sprintf waveNameStr, "%s_%03d", ParseFilePath(3, filePath, ":", 0, 0), i
+		sprintf waveNameStr, "%s_%03d", ParseFilePath(3, filePath, ":", 0, 0), i + 1
 //#else
 //		if (scanInd <= scanIndPrev)
 //			printf "Scan number is not incremental (prev: #%d at line %d, curr: #%d at line %d). ", scanIndPrev, blockStartPrev + 1, scanInd, blockStart + 1
@@ -318,3 +318,25 @@ End
 ////	fww[3] = fw_Position
 ////	fww[4] = fw2_ScanData
 ////	return fww
+
+
+// load Spec data file and return a free wave reference wave
+Function/WAVE SPEC_IO_load1DFile(filePath, symbPath)
+	String filePath, symbPath
+
+	String waveNameStr
+	sprintf waveNameStr, "%s_1D", ParseFilePath(3, filePath, ":", 0, 0)
+	
+	LoadWave/G/M/L={1, 2, 0, 0, 0}/D/N=tmp_1d_wave/O/Q/P=$symbPath filePath
+	
+//	LoadWave/G/M/D/N=wave/P=X20201008_Sano/O "I9_0p33C_01_00000.txt"
+	if (V_flag == 0)
+		printf "1D Loading Error.\r"
+		return $""
+	endif
+	Duplicate/O $(StringFromList(0, S_waveNames)), $(waveNameStr)
+	WAVE lw_data = $(waveNameStr)
+	KillWaves/Z $(StringFromList(0, S_waveNames))	
+	
+	return lw_data
+End
