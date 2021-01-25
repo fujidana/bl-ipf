@@ -31,11 +31,39 @@ Menu "Macros"
 	"Display Data Browser Selection Separately", /Q, SPEC_doActionForDataBrowser(2)
 	"Display Data Browser Selection Together", /Q, Display; SPEC_doActionForDataBrowser(4)
 	"Append Data Browser Selection", /Q, SPEC_doActionForDataBrowser(4)
+// End
+// Menu "Macros", dynamic
+	// SPEC_getMenuItem(0), /Q, SPEC_doActionForDataBrowser(2)
+	// SPEC_getMenuItem(1), /Q, Display; SPEC_doActionForDataBrowser(4)
+	// SPEC_getMenuItem(2), /Q, SPEC_doActionForDataBrowser(4)
 	"-"
 	"Reselect Columns of Traces...", /Q, SPEC_reselectColumnDialog()
 	"Fancy Traces...", /Q, SPEC_fancyTrancesDialog()
 End
 
+
+// Function/S SPEC_getMenuItem(i)
+// 	Variable i
+	
+// 	String tmpStr = ""
+// 	if (strlen(GetBrowserSelection(-1)) == 0)
+// 		tmpStr = "("
+// 	endif
+// 	switch(i)
+// 		case 0:
+// 			tmpStr += "Display Data Browser Selection Separately"
+// 			break
+// 		case 1:
+// 			tmpStr += "Display Data Browser Selection Together"
+// 			break
+// 		case 2:
+// 			tmpStr += "Append Data Browser Selection"
+// 			break
+// 		default:
+// 			tmpStr += "INVALID ARGUMENTS"
+// 	endswitch
+// 	return tmpStr
+// End
 
 /// @brief Hook function invoked when a file is dragged onto the Igor Pro icon.
 Static Function BeforeFileOpenHook(refNum, fileNameStr, pathNameStr, fileTypeStr, fileCreatorStr, fileKind)
