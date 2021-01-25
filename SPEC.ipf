@@ -31,6 +31,7 @@ Menu "Macros"
 	"Display Data Browser Selection Separately", /Q, SPEC_doActionForDataBrowser(2)
 	"Display Data Browser Selection Together", /Q, Display; SPEC_doActionForDataBrowser(4)
 	"Append Data Browser Selection", /Q, SPEC_doActionForDataBrowser(4)
+	"Joint Columns of Data Browser Selection...", /Q, SPEC_doActionForDataBrowser(8)
 // End
 // Menu "Macros", dynamic
 // 	SPEC_getMenuItem(0), /Q, SPEC_doActionForDataBrowser(2)
@@ -38,6 +39,7 @@ Menu "Macros"
 // 	SPEC_getMenuItem(2), /Q, SPEC_doActionForDataBrowser(4)
 	"-"
 	"Reselect Columns of Traces...", /Q, SPEC_reselectColumnDialog()
+	"Joint Traces as wave...", /Q, SPEC_jointTracesDialog("")
 	"Fancy Traces...", /Q, SPEC_fancyTrancesDialog()
 End
 
@@ -149,7 +151,7 @@ Function SPEC_loadSpecScanFile(filePath, symbPath)
 	
 	// Postprocess (optionally draw graphs).
 	Variable action = NumVarOrDefault("SV_postprocess", 5)
-	showGraphs(fww, action)
+	doActionSubroutine(fww, action)
 
 	return 0
 End
@@ -179,7 +181,7 @@ Function SPEC_load1DFile(filePath, symbPath)
 
 	// Postprocess (optionally draw graphs).
 	Variable action = NumVarOrDefault("SV_postprocess", 5)
-	showGraphs(fww, action)
+	doActionSubroutine(fww, action)
 
 	return 0
 End
@@ -237,7 +239,7 @@ Function SPEC_doActionForDataBrowser(option)
 	printf "[SPEC@%s] %d waves were handled from %d selection in data browser.\r", time(), j, i
 	
 	if (numpnts(fww) > 0)
-		showGraphs(fww, option)
+		doActionSubroutine(fww, option)
 	endif
 	
 	return 0
@@ -356,7 +358,7 @@ End
 
 
 /// @brief show graphs.
-Static Function showGraphs(inww, option)
+Static Function doActionSubroutine(inww, option)
 	WAVE/WAVE inww
 	Variable option
 	
@@ -393,6 +395,38 @@ Static Function showGraphs(inww, option)
 				append2DWave(inww[i], xCol, yCol)
 			endif
 		endfor
+	elseif (option == 8) // joint columns
+		String outWaveNameStr
+		Variable col
+		col = yCol
+		Prompt outWaveNameStr, "Output Wave name"
+		Prompt col, "Column Index to extract"
+		DoPrompt "Joint Column of Selected Waves", outWaveNameStr, col
+		if (V_flag != 0) // cancel
+			return V_flag
+		endif
+		
+		// i == 0
+		if (col < 0)
+			Duplicate/O/R=[][DimSize(inww[0], 1) - col] inww[0], $(outWaveNameStr)
+		else
+			Duplicate/O/R=[][col] inww[0], $(outWaveNameStr)
+		endif
+		WAVE outWave = $(outWaveNameStr)
+		SetScale/P y 0, 1, outWave
+		SetDimLabel 1, i, $(NameOfWave(inww[0])), outWave
+
+		//	i > 0
+		for (i = 1; i < n; i += 1)
+			if (col < 0)
+				Duplicate/FREE/R=[][DimSize(inww[i], 1) - col] inww[i], fw
+			else
+				Duplicate/FREE/R=[][col] inww[i], fw
+			endif
+			Redimension/N=-1 fw
+			Concatenate {fw}, outWave
+			SetDimLabel 1, i, $(NameOfWave(inww[i])), outWave
+		endfor
 	endif
 	
 	return 0
@@ -419,4 +453,71 @@ Static Function append2DWave(inw, xCol, yCol)
 	xCol2 = xCol >= 0 ? xCol : DimSize(inw, 1) + xCol
 	yCol2 = yCol >= 0 ? yCol : DimSize(inw, 1) + yCol
 	AppendToGraph inw[][yCol2] vs inw[][xCol2]
+End
+
+
+// This assume all column length is equal.
+Function SPEC_jointTracesDialog(graphNameStr)
+	String graphNameStr
+	Variable i, n, col
+	String traceListStr, traceNameStr, traceInfoStr
+	
+	String xOutWaveNameStr, yOutWaveNameStr
+	Prompt xOutWaveNameStr, "Output Wave name of Horizontal-axis traces"
+	Prompt yOutWaveNameStr, "Output Wave name of Vertical-axis traces"
+	DoPrompt "Extract traces in " + graphNameStr, xOutWaveNameStr, yOutWaveNameStr
+	if (V_flag != 0) // cancel
+		return V_flag
+	elseif (strlen(xOutWaveNameStr) == 0 && strlen(yOutWaveNameStr) == 0)
+		return 0
+	endif
+
+	// 0x01: normal graph traces, 0x04: omit hidden traces
+	traceListStr = TraceNameList(graphNameStr, ";", 0x01 | 0x04)
+	n = ItemsInList(traceListStr)
+	
+	for (i = 0; i < n; i += 1)
+		traceNameStr = StringFromList(i, traceListStr)
+		traceInfoStr = TraceInfo(graphNameStr, traceNameStr, 0)
+
+		if (strlen(xOutWaveNameStr) > 0)
+			sscanf StringByKey("XRANGE", traceInfoStr), "[*][%d]", col
+			if (V_flag == 1)
+				WAVE/Z lw_trace = XWaveRefFromTrace(graphNameStr, traceNameStr)
+				if (WaveExists(lw_trace))
+					if (i == 0)
+						Duplicate/O/R=[][col] lw_trace, $(xOutWaveNameStr)
+						WAVE xOutWave = $(xOutWaveNameStr)
+						SetScale/P y 0, 1, xOutWave
+					else
+						Duplicate/FREE/R=[][col] lw_trace, fw
+						Redimension/N=-1 fw
+						Concatenate {fw}, xOutWave
+					endif
+					SetDimLabel 1, i, $(traceNameStr), xOutWave
+				endif
+			else
+				// error
+			endif
+		endif
+
+		if (strlen(yOutWaveNameStr) > 0)
+			sscanf StringByKey("YRANGE", traceInfoStr), "[*][%d]", col
+			if (V_flag == 1)
+				WAVE lw_trace = TraceNameToWaveRef(graphNameStr, traceNameStr)
+				if (i == 0)
+					Duplicate/O/R=[][col] lw_trace, $(yOutWaveNameStr)
+					WAVE yOutWave = $(yOutWaveNameStr)
+					SetScale/P y 0, 1, yOutWave
+				else
+					Duplicate/FREE/R=[][col] lw_trace, fw
+					Redimension/N=-1 fw
+					Concatenate {fw}, yOutWave
+				endif
+				SetDimLabel 1, i, $(traceNameStr), yOutWave
+			else
+				// error
+			endif
+		endif
+	endfor
 End
