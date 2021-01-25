@@ -296,17 +296,21 @@ Function SPEC_fancyTrancesDialog()
 	endif
 	graphNameStr = StringFromList(0, graphListStr)
 	
-	Variable cycle, reversed, xOffset, yOffset
+	Variable cycle, reversed, xOffset, yOffset, xMultiplier, yMultiplier
 	String colorTableStr
 	colorTableStr = "Rainbow"
 	cycle = 0
 	reversed = 1
+	xMultiplier = 1
+	yMultiplier = 1
 	Prompt colorTableStr, "Color Table", popup, CTabList()
-	Prompt cycle, "Number of Traces per Coloring Cycle (set 0 for full range)"
+	Prompt cycle, "Number of Traces per Coloring Cycle"
 	Prompt reversed, "Reversed Coloring", popup, "NO;YES;"
 	Prompt xOffset, "Horizontal Offset per Trace"
 	Prompt yOffset, "Vertical Offset per Trace"
-	DoPrompt "Fancy Traces in " + graphNameStr, colorTableStr, cycle, reversed, xOffset, yOffset
+	Prompt xMultiplier, "Horizontal Multiplier per Trace"
+	Prompt yMultiplier, "Vertical Multiplier per Trace"
+	DoPrompt "Fancy Traces in " + graphNameStr, xOffset, yOffset, xMultiplier, yMultiplier, colorTableStr, cycle, reversed
 	if (V_flag != 0) // cancel
 		return V_flag
 	endif
@@ -339,6 +343,12 @@ Function SPEC_fancyTrancesDialog()
 		blue  = M_colors2[mod(i, cycle)][2]
 		ModifyGraph/W=$(graphNameStr) rgb($StringFromList(i, traceListStr))=(red, green, blue)
 		ModifyGraph/W=$(graphNameStr) offset($StringFromList(i, traceListStr))={xOffset * i, yOffset * i}
+		if (xMultiplier == 1 && yMultiplier == 1)
+			ModifyGraph/W=$(graphNameStr) muloffset($StringFromList(i, traceListStr))={0, 0}
+		else
+			ModifyGraph/W=$(graphNameStr) muloffset($StringFromList(i, traceListStr))={xMultiplier^i, yMultiplier^i}
+		endif
+		
 	endfor
 
 	return 0
