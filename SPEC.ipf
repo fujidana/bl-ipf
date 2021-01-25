@@ -14,7 +14,7 @@
 
 
 Static StrConstant ksScanFileFilter = "spec scan data file (*.spec):.spec;"
-Static StrConstant ks1dFileFilter = "spec 1D data file (*.dat):.dat;"
+Static StrConstant ks1dFileFilter = "spec 1D data file (*.dat,.txt):.dat,.txt;"
 Static StrConstant ksAllFileFilter = "All Files:*;"
 
 
@@ -33,9 +33,9 @@ Menu "Macros"
 	"Append Data Browser Selection", /Q, SPEC_doActionForDataBrowser(4)
 // End
 // Menu "Macros", dynamic
-	// SPEC_getMenuItem(0), /Q, SPEC_doActionForDataBrowser(2)
-	// SPEC_getMenuItem(1), /Q, Display; SPEC_doActionForDataBrowser(4)
-	// SPEC_getMenuItem(2), /Q, SPEC_doActionForDataBrowser(4)
+// 	SPEC_getMenuItem(0), /Q, SPEC_doActionForDataBrowser(2)
+// 	SPEC_getMenuItem(1), /Q, Display; SPEC_doActionForDataBrowser(4)
+// 	SPEC_getMenuItem(2), /Q, SPEC_doActionForDataBrowser(4)
 	"-"
 	"Reselect Columns of Traces...", /Q, SPEC_reselectColumnDialog()
 	"Fancy Traces...", /Q, SPEC_fancyTrancesDialog()
