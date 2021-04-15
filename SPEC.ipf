@@ -14,8 +14,9 @@
 
 
 Static StrConstant ksScanFileFilter = "spec scan data file (*.spec):.spec;"
-Static StrConstant ks1dFileFilter = "spec 1D data file (*.dat,.txt):.dat,.txt;"
-Static StrConstant ksAllFileFilter = "All Files:*;"
+Static StrConstant ks1dFileFilter   = "spec 1D data file (*.dat,.txt):.dat,.txt;"
+Static StrConstant ksXasFileFilter  = "PF 9809 XAS data file (*.xas):.xas;"
+Static StrConstant ksAllFileFilter  = "All Files:*;"
 
 
 Menu "Load Waves"
@@ -27,6 +28,7 @@ Menu "Macros"
 	"-"
 	"Open SPEC Scan Files...", /Q, SPEC_openSpecFileDialog()
 	"Open 1D Files...",        /Q, SPEC_open1DFileDialog()
+	"Open XAS Files...",       /Q, SPEC_openXasFileDialog()
 	"-"
 	"Display Data Browser Selection Separately", /Q, SPEC_doActionForDataBrowser(2)
 	"Display Data Browser Selection Together", /Q, Display; SPEC_doActionForDataBrowser(4)
@@ -105,7 +107,7 @@ Function SPEC_openSpecFileDialog()
 	return errno
 End
 
-/// @brief Show a Open Dialog for a SPEC file.
+/// @brief Show a Open Dialog for a Text file.
 Function SPEC_open1DFileDialog()
 	Variable i, refNum, errno
 	String fileFilter, fileNameList
@@ -126,6 +128,29 @@ Function SPEC_open1DFileDialog()
 	
 	return errno
 End
+
+/// @brief Show a Open Dialog for a XAS file.
+Function SPEC_openXasFileDialog()
+	Variable i, refNum, errno
+	String fileFilter, fileNameList
+	fileFilter = ksXasFileFilter + ksAllFileFilter
+	Open/D/R/MULT=1/F=fileFilter refNum
+	errno = 0
+	fileNameList = S_fileName
+
+	if (strlen(fileNameList) == 0) // User cancel
+		return -1
+	endif
+
+	for (i = 0; i < ItemsInList(fileNameList, "\r"); i += 1)
+		if (SPEC_loadXasFile(StringFromList(i, fileNameList, "\r"), "") != 0)
+			errno += 1
+		endif
+	endfor
+	
+	return errno
+End
+
 
 
 /// @brief Load a SPEC scan file.
@@ -170,7 +195,6 @@ Function SPEC_load1DFile(filePath, symbPath)
 	WAVE/Z fw = SPEC_IO_load1DFile(filePath, symbPath)
 	if (!WaveExists(fw))
 		print "Error in loading data part."
-		SetDataFolder savedDFR
 		return -1
 	endif
 	
@@ -185,6 +209,36 @@ Function SPEC_load1DFile(filePath, symbPath)
 
 	return 0
 End
+
+
+/// @brief Load a PF 9809 XAS file.
+Function SPEC_loadXasFile(filePath, symbPath)
+	String filePath, symbPath
+	
+	if (strlen(symbPath))
+		printf "[SPEC@%s] Loading XAS file: \"%s\" @ %s\r", time(), filePath, symbPath
+	else
+		printf "[SPEC@%s] Loading XAS file: \"%s\"\r", time(), filePath
+	endif
+	
+	WAVE/Z fw = SPEC_IO_loadXasFile(filePath, symbPath)
+	if (!WaveExists(fw))
+		print "Error in loading data part."
+		return -1
+	endif
+	
+	printf "[SPEC@%s] XAS wave was loaded.\r", time()
+	
+	Make/FREE/WAVE/N=1 fww
+	fww[0] = fw
+
+	// Postprocess (optionally draw graphs).
+	Variable action = NumVarOrDefault("SV_postprocess", 5)
+	doActionSubroutine(fww, action)
+
+	return 0
+End
+
 
 
 /// @brief Show a dialog to select postprocess action.

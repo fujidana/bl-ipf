@@ -320,7 +320,7 @@ End
 ////	return fww
 
 
-// load Spec data file and return a free wave reference wave
+// load Spec 1D file and return a free wave reference wave
 Function/WAVE SPEC_IO_load1DFile(filePath, symbPath)
 	String filePath, symbPath
 
@@ -329,7 +329,6 @@ Function/WAVE SPEC_IO_load1DFile(filePath, symbPath)
 	
 	LoadWave/G/M/L={1, 2, 0, 0, 0}/D/N=tmp_1d_wave/O/Q/P=$symbPath filePath
 	
-//	LoadWave/G/M/D/N=wave/P=X20201008_Sano/O "I9_0p33C_01_00000.txt"
 	if (V_flag == 0)
 		printf "1D Loading Error.\r"
 		return $""
@@ -338,5 +337,87 @@ Function/WAVE SPEC_IO_load1DFile(filePath, symbPath)
 	WAVE lw_data = $(waveNameStr)
 	KillWaves/Z $(StringFromList(0, S_waveNames))	
 	
+	return lw_data
+End
+
+
+Function/WAVE SPEC_IO_load2DTextFile(filePath, symbPath)
+	String filePath, symbPath
+	
+	String waveNameStr
+	sprintf waveNameStr, "%s", ParseFilePath(3, filePath, ":", 0, 0)
+	
+	LoadWave/G/M/D/N=tmp_general_text_wave/O/Q/P=$symbPath filePath
+	
+	if (V_flag == 0)
+		printf "1D Loading Error.\r"
+		return $""
+	endif
+	Duplicate/O $(StringFromList(0, S_waveNames)), $(waveNameStr)
+	WAVE lw_data = $(waveNameStr)
+	KillWaves/Z $(StringFromList(0, S_waveNames))
+	
+	return lw_data
+End
+
+
+Function/WAVE SPEC_IO_loadXasFile(filePath, symbPath)
+	String filePath, symbPath
+
+	String waveNameStr
+	sprintf waveNameStr, "%s_XAS", ParseFilePath(3, filePath, ":", 0, 0)
+
+	Variable fp
+	String lineStr
+
+	// open a file pointer
+	Open/R/Z=1/P=$symbPath fp as filePath
+	if (V_flag != 0) // -1: user cancelled
+		print "Error in opening file.", V_flag
+		return $""
+	endif
+
+	// read 1st line
+	FReadLine fp, lineStr
+	if (!stringmatch(lineStr, "  9809  *"))
+		print "Not PF 9809 XAS file format."
+		Close fp
+		return $""
+	endif
+	
+	// read 2nd-4th line
+	FReadLine fp, lineStr
+	FReadLine fp, lineStr
+	FReadLine fp, lineStr
+	// read 5th line
+	FReadLine fp, lineStr
+	String desc
+	Variable d_spacing
+	sscanf lineStr, " Mono : %s D=%g", desc, d_spacing
+	if (V_flag != 2)
+		print "Failed in parsing d-spacing value."
+		Close fp
+		return $""
+	endif
+
+	LoadWave/G/M/L={18, 21, 0, 0, 0}/D/N=tmp_1d_wave/O/Q/P=$symbPath filePath
+	if (V_flag == 0)
+		printf "1D Loading Error.\r"
+		return $""
+	endif
+	Duplicate/O $(StringFromList(0, S_waveNames)), $(waveNameStr)
+	WAVE lw_data = $(waveNameStr)
+	KillWaves/Z $(StringFromList(0, S_waveNames))
+	
+	// add energy column to the first
+	InsertPoints/M=1 0, 1, lw_data
+	lw_data[][0] = 12.3984 / (2 * d_spacing * sin(pi * lw_data[p][1] / 180))
+	
+	// add mu-T column to the end
+	Variable n
+	n = DimSize(lw_data, 1)
+	InsertPoints/M=1 (n), 1, lw_data
+	lw_data[][n] = log(lw_data[p][4] / lw_data[p][5])
+
 	return lw_data
 End
