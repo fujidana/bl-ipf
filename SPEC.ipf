@@ -20,29 +20,36 @@ Static StrConstant ksAllFileFilter  = "All Files:*;"
 
 
 Menu "Load Waves"
-	"Open SPEC Scan Files...", /Q, SPEC_openSpecFileDialog()
+	"Load SPEC Scan Files...", /Q, SPEC_openSpecFileDialog()
+	"Load 1D Files...",        /Q, SPEC_open1DFileDialog()
+	"Load XAS Files...",       /Q, SPEC_openXasFileDialog()
 End
 
 Menu "Macros"
-	"Configure SPEC Macro Behavior...", /Q, SPEC_configDialog()
+	"(Load Waves"
+	"Load SPEC Scan Files...", /Q, SPEC_openSpecFileDialog()
+	"Load 1D Files...",        /Q, SPEC_open1DFileDialog()
+	"Load XAS Files...",       /Q, SPEC_openXasFileDialog()
 	"-"
-	"Open SPEC Scan Files...", /Q, SPEC_openSpecFileDialog()
-	"Open 1D Files...",        /Q, SPEC_open1DFileDialog()
-	"Open XAS Files...",       /Q, SPEC_openXasFileDialog()
-	"-"
-	"Display Data Browser Selection Separately", /Q, SPEC_doActionForDataBrowser(2)
-	"Display Data Browser Selection Together", /Q, Display; SPEC_doActionForDataBrowser(4)
-	"Append Data Browser Selection", /Q, SPEC_doActionForDataBrowser(4)
-	"Joint Columns of Data Browser Selection...", /Q, SPEC_doActionForDataBrowser(8)
+	"(Data Browser"
+	"Display Selection Separately", /Q, SPEC_doActionForDataBrowser(2)
+	"Display Selection Together", /Q, Display; SPEC_doActionForDataBrowser(4)
+	"Append Selection", /Q, SPEC_doActionForDataBrowser(4)
+	"Join Columns of Selection...", /Q, SPEC_doActionForDataBrowser(8)
 // End
 // Menu "Macros", dynamic
 // 	SPEC_getMenuItem(0), /Q, SPEC_doActionForDataBrowser(2)
 // 	SPEC_getMenuItem(1), /Q, Display; SPEC_doActionForDataBrowser(4)
 // 	SPEC_getMenuItem(2), /Q, SPEC_doActionForDataBrowser(4)
 	"-"
+	"(Graphs"
 	"Reselect Columns of Traces...", /Q, SPEC_reselectColumnDialog()
-	"Joint Traces as wave...", /Q, SPEC_jointTracesDialog("")
+	"Join Traces in a 2D Wave...", /Q, SPEC_joinTracesDialog("")
 	"Fancy Traces...", /Q, SPEC_fancyTrancesDialog()
+	"-"
+	"(Other"
+	"Configure SPEC Macro Behavior...", /Q, SPEC_configDialog()
+	"Display Columns of 2D Wave Together...", /Q, SPEC_multicolDisplayDialog()
 End
 
 
@@ -449,13 +456,13 @@ Static Function doActionSubroutine(inww, option)
 				append2DWave(inww[i], xCol, yCol)
 			endif
 		endfor
-	elseif (option == 8) // joint columns
+	elseif (option == 8) // join columns
 		String outWaveNameStr
 		Variable col
 		col = yCol
 		Prompt outWaveNameStr, "Output Wave name"
 		Prompt col, "Column Index to extract"
-		DoPrompt "Joint Column of Selected Waves", outWaveNameStr, col
+		DoPrompt "Join Column of Selected Waves", outWaveNameStr, col
 		if (V_flag != 0) // cancel
 			return V_flag
 		endif
@@ -511,7 +518,7 @@ End
 
 
 // This assume all column length is equal.
-Function SPEC_jointTracesDialog(graphNameStr)
+Function SPEC_joinTracesDialog(graphNameStr)
 	String graphNameStr
 	Variable i, n, col
 	String traceListStr, traceNameStr, traceInfoStr
@@ -572,6 +579,39 @@ Function SPEC_jointTracesDialog(graphNameStr)
 			else
 				// error
 			endif
+		endif
+	endfor
+End
+
+Function SPEC_multicolDisplayDialog()
+	String xWaveNameStr, yWaveNameStr
+	Variable colStart = 0, colEnd = -1, colDelta = 1
+	
+	
+	Prompt xWaveNameStr, "1-dimensional wave for horizontal axis", popup, "_calculated_;" + WaveList("*", ";", "TEXT:0,BYTE:0,WORD:0,DIMS:1")
+	Prompt yWaveNameStr, "2-dimensional wave for vertical axis", popup, WaveList("*", ";", "TEXT:0,BYTE:0,WORD:0,DIMS:2,MINCOLS:4")
+	Prompt colStart, "First column index"
+	Prompt colEnd, "Last column index (-1 represents the last index)"
+	Prompt colDelta, "Incremental value"
+	
+	DoPrompt "Display Columns", xWaveNameStr, yWaveNameStr, colStart, colEnd, colDelta
+	if (V_flag != 0) // cancel
+		return V_flag
+	endif
+	
+	WAVE/Z xWAVE = $(xWaveNameStr)
+	WAVE   yWAVE = $(yWaveNameStr)
+	if (colEnd == -1)
+		colEnd = DimSize(yWave, 1) - 1
+	endif
+	
+	Variable i
+	Display
+	for (i = colStart; i <= colEnd; i += colDelta)
+		if (stringmatch(xWaveNameStr, "_calculated_"))
+			AppendToGraph yWave[][i]
+		else
+			AppendToGraph yWave[][i] vs xWave
 		endif
 	endfor
 End
