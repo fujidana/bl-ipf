@@ -400,6 +400,8 @@ Function/WAVE SPEC_IO_loadXasFile(filePath, symbPath)
 		return $""
 	endif
 
+	Close fp
+
 	LoadWave/G/M/L={18, 21, 0, 0, 0}/D/N=tmp_1d_wave/O/Q/P=$symbPath filePath
 	if (V_flag == 0)
 		printf "1D Loading Error.\r"
