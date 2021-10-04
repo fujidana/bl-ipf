@@ -50,6 +50,7 @@ Menu "Macros"
 	"(Other"
 	"Configure SPEC Macro Behavior...", /Q, SPEC_configDialog()
 	"Display Columns of 2D Wave Together...", /Q, SPEC_multicolDisplayDialog()
+	"-"
 End
 
 
