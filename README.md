@@ -21,12 +21,13 @@ How to load the procedures
 2. Input `#include "SPEC"` in the procedure window and compile it.
 3. Then several handy actions are available from "Macros" menu bar item. One can _drag and drop_ a SPEC scan file (`.spec`) into Igor Pro window or app icons.
 
-The loaded waves is two-dimensional and its first column and last columns are by default treated as _x_-axis and _y_-axis, respectivly.
+A loaded wave by this scripts is two-dimensional and its first column and last columns are by default treated as _x_-axis and _y_-axis, respectivly.
 
 Tips
 ----
 
-This scripts load and handle data as two-dimensional waves, which may be a bit more difficult for Igor Pro beginners to use than a conventional one dimensional wave.
+This scripts load and handle data as two-dimensional waves.
+It may be a bit more difficult for Igor Pro beginners to use them than a conventional one dimensional wave.
 The followings are some examples that directly use the two-diimensional waves.
 
 ```igorpro
