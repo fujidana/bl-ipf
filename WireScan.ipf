@@ -17,11 +17,11 @@
 //Function WireScan_fitMultiple(String waveBasenameStr, Variable startIndex, Variable endIndex, Variable speepSec)
 
 Menu "Macros"
-	Submenu "Wire Scan"
-		"Show Graph",            /Q, WireScan_show()
-		"Analyze Single Data",   /Q, WireScan_showFitSingleDialog()
-		"Analyze Multiple Data", /Q, WireScan_showFitMultiDialog()
-	End
+	"(Wire Scan"
+	"Show Graph",            /Q, WireScan_show()
+	"Analyze Single Data",   /Q, WireScan_showFitSingleDialog()
+	"Analyze Multiple Data", /Q, WireScan_showFitMultiDialog()
+	"-"
 End
 
 Function WireScan_show()
@@ -84,8 +84,13 @@ End
 
 
 Function WireScan_fitSingle(WAVE inwave2d)
-	Duplicate/O/R=[][0] inwave2d, WSW_x
-	Duplicate/O/R=[][DimSize(inwave2d, 1) - 1] inwave2d, WSW_I
+	Variable xCol, yCol
+	xCol = NumVarOrDefault("SV_xCol", 0)
+	yCol = NumVarOrDefault("SV_yCol", -1)
+	xCol = xCol >= 0 ? xCol : DimSize(inwave2d, 1) + xCol
+	yCol = yCol >= 0 ? yCol : DimSize(inwave2d, 1) + yCol
+	Duplicate/O/R=[][xCol] inwave2d, WSW_x
+	Duplicate/O/R=[][yCol] inwave2d, WSW_I
 	Redimension/N=-1 WSW_x, WSW_I
 
 	Differentiate/D WSW_I /X=WSW_x/D=WSW_dIdx
@@ -98,7 +103,7 @@ Function WireScan_fitSingle(WAVE inwave2d)
 //	CurveFit/N=1 gauss WSW_dIdx /X=WSW_x/D
 
 	WAVE W_coef
-	printf "[WireScan] wave: %s, FWHM: %g\r", NameOfWave(inwave2d), W_coef[3]*2*sqrt(ln(2))
+	printf "[WireScan] wave: %s, FWHM: %g\r", NameOfWave(inwave2d), W_coef[3] * 2 * sqrt(ln(2))
 
 	return 0
 End
@@ -141,7 +146,7 @@ Function WireScan_fitMultiple(String waveBasenameStr, Variable startIndex, Varia
 	WSW_FWHMCoef *= 2*sqrt(ln(2))
 	WSW_FWHMSigma *= 2*sqrt(ln(2))
 	
-	printf "[WireScan] multiple waves has been analyzed. The results are stored in WSM_coef, WSW_FWHMCoef, etc.\r"
+	printf "[WireScan] multiple waves have been analyzed. The results are stored in WSM_coef, WSW_FWHMCoef, etc.\r"
 	
 	return 0
 End
