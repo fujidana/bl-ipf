@@ -1,9 +1,12 @@
 #pragma TextEncoding = "UTF-8"
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 #pragma version=1.0
+#pragma IgorVersion=6.3
 
 //#include "SFView_MCPlot"
 #include "SPEC_IO"
+#include "SPEC_util"
+
 
 
 /// Module to handle SPEC scan data.
@@ -14,8 +17,9 @@
 
 
 Static StrConstant ksScanFileFilter = "spec scan data file (*.spec):.spec;"
-Static StrConstant ks1dFileFilter   = "spec 1D data file (*.dat,.txt):.dat,.txt;"
+Static StrConstant ks1dFileFilter   = "spec 1D data file (*.dat,*.txt):.dat,.txt;"
 Static StrConstant ksXasFileFilter  = "PF 9809 XAS data file (*.xas):.xas;"
+Static StrConstant ksMcaFileFilter  = "MCA array data file (*.mca,*.dat):.mca,.dat;"
 Static StrConstant ksAllFileFilter  = "All Files:*;"
 
 
@@ -23,20 +27,22 @@ Menu "Load Waves"
 	"Load SPEC Scan Files...", /Q, SPEC_openSpecFileDialog()
 	"Load 1D Files...",        /Q, SPEC_open1DFileDialog()
 	"Load XAS Files...",       /Q, SPEC_openXasFileDialog()
+	"Load MCA Files...",       /Q, SPEC_openMcaFileDialog()
 End
 
 Menu "Macros"
-	"(Load Waves"
-	"Load SPEC Scan Files...", /Q, SPEC_openSpecFileDialog()
-	"Load 1D Files...",        /Q, SPEC_open1DFileDialog()
-	"Load XAS Files...",       /Q, SPEC_openXasFileDialog()
-	"-"
+//	"(Load Waves"
+//	"Load SPEC Scan Files...", /Q, SPEC_openSpecFileDialog()
+//	"Load 1D Files...",        /Q, SPEC_open1DFileDialog()
+//	"Load XAS Files...",       /Q, SPEC_openXasFileDialog()
+//	"Load MCA Files...",       /Q, SPEC_openMcaFileDialog()
+//	"-"
 	"(Data Browser"
 	"Display Selection Separately", /Q, SPEC_doActionForDataBrowser(2)
-	"Display Selection Together", /Q, Display; SPEC_doActionForDataBrowser(4)
-	"Append Selection", /Q, SPEC_doActionForDataBrowser(4)
+	"Display Selection Together",   /Q, Display; SPEC_doActionForDataBrowser(4)
+	"Append Selection",             /Q, SPEC_doActionForDataBrowser(4)
 	"Join Columns of Selection...", /Q, SPEC_doActionForDataBrowser(8)
-// End
+	"Join Selection",               /Q, SPEC_doActionForDataBrowser(16)
 // Menu "Macros", dynamic
 // 	SPEC_getMenuItem(0), /Q, SPEC_doActionForDataBrowser(2)
 // 	SPEC_getMenuItem(1), /Q, Display; SPEC_doActionForDataBrowser(4)
@@ -47,9 +53,11 @@ Menu "Macros"
 	"Join Traces in a 2D Wave...", /Q, SPEC_joinTracesDialog("")
 	"Fancy Traces...", /Q, SPEC_fancyTrancesDialog()
 	"-"
+	"(Joined 2D Wave"
+	"Display Columns in a 2D Wave...", /Q, SPEC_multicolDisplayDialog()
+	"-"
 	"(Other"
 	"Configure SPEC Macro Behavior...", /Q, SPEC_configDialog()
-	"Display Columns of 2D Wave Together...", /Q, SPEC_multicolDisplayDialog()
 	"-"
 End
 
@@ -160,6 +168,29 @@ Function SPEC_openXasFileDialog()
 End
 
 
+/// @brief Show a Open Dialog for a XAS file.
+Function SPEC_openMcaFileDialog()
+	Variable i, refNum, errno
+	String fileFilter, fileNameList
+	fileFilter = ksMcaFileFilter + ksAllFileFilter
+	Open/D/R/MULT=1/F=fileFilter refNum
+	errno = 0
+	fileNameList = S_fileName
+
+	if (strlen(fileNameList) == 0) // User cancel
+		return -1
+	endif
+
+	for (i = 0; i < ItemsInList(fileNameList, "\r"); i += 1)
+		if (WaveExists(SPEC_loadMcaFile(StringFromList(i, fileNameList, "\r"), "")))
+			errno += 1
+		endif
+	endfor
+	
+	return errno
+End
+
+
 
 /// @brief Load a SPEC scan file.
 Function SPEC_loadSpecScanFile(filePath, symbPath)
@@ -247,6 +278,29 @@ Function SPEC_loadXasFile(filePath, symbPath)
 	return 0
 End
 
+/// @brief Load a MCA array file.
+Function/WAVE SPEC_loadMcaFile(filePath, symbPath)
+	String filePath, symbPath
+
+	LoadWave/G/M/D/P=$(symbPath)/N=SW2_data_mca_tmp/Q filePath
+	if (V_flag == 0)
+		printf "Loading Error.\r"
+		return $""
+	endif
+	WAVE lw_data = $StringFromList(0, S_waveNames)
+	MatrixTranspose lw_data
+	
+	WAVE/Z SW_mcaParam
+	if (WaveExists(SW_mcaParam))
+		SetScale/P x SW_mcaParam[%chOffset], SW_mcaParam[%chSlope], "eV", lw_data
+	endif
+	
+	String waveNameStr
+	waveNameStr = ParseFilePath(3, filePath, ":", 0, 0)
+	Duplicate/O lw_data, $waveNameStr
+	
+	return $waveNameStr
+End
 
 
 /// @brief Show a dialog to select postprocess action.
@@ -275,6 +329,7 @@ End
 Function SPEC_doActionForDataBrowser(option)
 	Variable option
 
+	// Exit if a data browser is not found.
 	if (strlen(GetBrowserSelection(-1)) == 0)
 		printf "[SPEC@%s] Data browser is not open.\r", time()
 		Beep
@@ -457,7 +512,7 @@ Static Function doActionSubroutine(inww, option)
 				append2DWave(inww[i], xCol, yCol)
 			endif
 		endfor
-	elseif (option == 8) // join columns
+	elseif (option == 8) // join specified columns of the 2D waves
 		String outWaveNameStr
 		Variable col
 		col = yCol
@@ -489,6 +544,12 @@ Static Function doActionSubroutine(inww, option)
 			Concatenate {fw}, outWave
 			SetDimLabel 1, i, $(NameOfWave(inww[i])), outWave
 		endfor
+	elseif (option == 16) // join waves
+		String waveListStr = ""
+		for (i = 0; i < n; i += 1)
+			waveListStr = waveListStr + GetWavesDataFolder(inww[i], 4) + ";"
+		endfor
+		Concatenate/O/NP waveListStr, SW_concatenated
 	endif
 	
 	return 0
@@ -615,4 +676,14 @@ Function SPEC_multicolDisplayDialog()
 			AppendToGraph yWave[][i] vs xWave
 		endif
 	endfor
+End
+
+Function SPEC_initMcaParam(offset, slope)
+	Variable offset, slope
+
+	Make/O/D/N=2 SW_mcaParam
+	SetDimLabel 0, 0, chOffset, SW_mcaParam
+	SetDimLabel 0, 1, chSlope, SW_mcaParam
+	SW_mcaParam[%chOffset] = offset
+	SW_mcaParam[%chSlope] = slope
 End
