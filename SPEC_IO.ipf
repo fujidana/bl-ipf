@@ -15,7 +15,7 @@
 //#define NOT_USE_SPEC_MNEMONIC
 
 
-// load Spec data file and return a free wave reference wave
+// load a Spec data file and return a free wave reference wave
 Function/WAVE SPEC_IO_loadSpecScanFile(filePath, symbPath)
 	String filePath, symbPath
 	
@@ -31,12 +31,12 @@ Function/WAVE SPEC_IO_loadSpecScanFile(filePath, symbPath)
 	Make/WAVE/FREE/N=0 fww
 	Make/I/FREE/N=0 fw_blockStart, fw_blockEnd, fw_dataStart, fw_scanInd
 	Make/D/FREE/N=0 fw_scanDate
-	Make/T/FREE/N=0 ftw_scanStr, ftw_dimLabel
+	Make/T/FREE/N=0 ftw_scanCmd, ftw_dimLabel
 	
 	SetScale d  0, 0, "dat", fw_scanDate
 
 	Variable lineInd, blockInd, isInBlock, scanInd
-	String lineStr, scanNameStr
+	String lineStr, scanCmd
 	
 	Variable year, month, day, hour, minute, second
 	String weekdayStr,  monthStr
@@ -75,16 +75,16 @@ Function/WAVE SPEC_IO_loadSpecScanFile(filePath, symbPath)
 			endif
 		else
 			// Skip until scan block start if it is out of the scan block
-			sscanf lineStr, "#S %d %[^\r]", scanInd, scanNameStr
+			sscanf lineStr, "#S %d %[^\r]", scanInd, scanCmd
 			if (V_flag > 1)
 				Redimension/N=(blockInd + 1) fw_blockStart, fw_blockEnd, fw_dataStart, fw_scanInd
 				Redimension/N=(blockInd + 1) fw_scanDate
-				Redimension/N=(blockInd + 1) ftw_scanStr, ftw_dimLabel
+				Redimension/N=(blockInd + 1) ftw_scanCmd, ftw_dimLabel
 				fw_blockStart[blockInd] = lineInd
 				fw_dataStart[blockInd]  = lineInd
 				fw_scanInd[blockInd]    = scanInd
 				fw_scanDate[blockInd]   = 0
-				ftw_scanStr[blockInd]   = scanNameStr
+				ftw_scanCmd[blockInd]   = scanCmd
 				blockInd += 1
 				isInBlock = 1
 			endif
@@ -105,6 +105,7 @@ Function/WAVE SPEC_IO_loadSpecScanFile(filePath, symbPath)
 		blockEnd   = fw_blockEnd[i]
 		scanInd    = fw_scanInd[i]
 		dimLabelStr = ftw_dimLabel[i]
+		scanCmd     = ftw_scanCmd[i]
 
 		// set the wave name to be saved
 //#ifdef IGNORES_SCAN_INDEX
@@ -138,10 +139,20 @@ Function/WAVE SPEC_IO_loadSpecScanFile(filePath, symbPath)
 			endfor
 		endif
 
+		// set x-scaling of the wave from the first row if the scan is aNscan or dNscan whrere N = empty or 2, 3, 4, 5.
+		if (GrepString(scanCmd, "^\\s*[a|d][2-5]?scan\s+"))
+			Variable xStart, xEnd
+			xStart = lw_data[0][0]
+			xEnd = lw_data[DimSize(lw_data, 0) - 1][0]
+			if (xStart != xEnd)
+				SetScale/I x xStart, xEnd, "", lw_data
+			endif
+		endif
+
 		// add time stamp and information to the wave note
 //		SFWave_setValueForKey(lw_data, "key", "value")
 		String tmpStr
-		sprintf tmpStr, "COMMAND: %s\rSCAN DATE: %sT%s\rSCAN NUMBER: %d\r", ftw_scanStr[i], Secs2Date(fw_scanDate[i], -2), Secs2Time(fw_scanDate[i], 3), fw_scanInd[i]
+		sprintf tmpStr, "COMMAND: %s\rSCAN DATE: %sT%s\rSCAN NUMBER: %d\r", ftw_scanCmd[i], Secs2Date(fw_scanDate[i], -2), Secs2Time(fw_scanDate[i], 3), fw_scanInd[i]
 		Note/K lw_data, tmpStr
 	endfor
 
@@ -150,7 +161,7 @@ Function/WAVE SPEC_IO_loadSpecScanFile(filePath, symbPath)
 	Duplicate/O fw_scanDate, $(waveNameStr)
 
 	sprintf waveNameStr, "%s_cmd", ParseFilePath(3, filePath, ":", 0, 0)
-	Duplicate/O ftw_scanStr, $(waveNameStr)
+	Duplicate/O ftw_scanCmd, $(waveNameStr)
 	
 	sprintf waveNameStr, "%s_scanNum", ParseFilePath(3, filePath, ":", 0, 0)
 	Duplicate/O fw_scanInd, $(waveNameStr)
@@ -336,6 +347,14 @@ Function/WAVE SPEC_IO_load1DFile(filePath, symbPath)
 	Duplicate/O $(StringFromList(0, S_waveNames)), $(waveNameStr)
 	WAVE lw_data = $(waveNameStr)
 	KillWaves/Z $(StringFromList(0, S_waveNames))	
+	
+	// It is assumed that data in the first column are evenly spaced.
+	Variable xStart, xEnd
+	xStart = lw_data[0][0]
+	xEnd = lw_data[DimSize(lw_data, 0) - 1][0]
+	if (xStart != xEnd)
+		SetScale/I x xStart, xEnd, "", lw_data
+	endif
 	
 	return lw_data
 End
