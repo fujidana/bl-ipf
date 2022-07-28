@@ -24,6 +24,7 @@ Static StrConstant ksAllFileFilter  = "All Files:*;"
 
 
 Menu "Load Waves"
+	"-"
 	"Load SPEC Scan Files...", /Q, SPEC_openSpecFileDialog()
 	"Load 1D Files...",        /Q, SPEC_open1DFileDialog()
 	"Load XAS Files...",       /Q, SPEC_openXasFileDialog()
@@ -41,8 +42,9 @@ Menu "Macros"
 	"Display Selection Separately", /Q, SPEC_doActionForDataBrowser(2)
 	"Display Selection Together",   /Q, Display; SPEC_doActionForDataBrowser(4)
 	"Append Selection",             /Q, SPEC_doActionForDataBrowser(4)
-	"Join Columns of Selection...", /Q, SPEC_doActionForDataBrowser(8)
-	"Join Selection",               /Q, SPEC_doActionForDataBrowser(16)
+	"Concatenate Columns of Selection...",  /Q, SPEC_doActionForDataBrowser(8)
+	"Concatenate Selection",                /Q, SPEC_doActionForDataBrowser(16)
+	"Concatenate Selection (No Promotion)", /Q, SPEC_doActionForDataBrowser(32)
 // Menu "Macros", dynamic
 // 	SPEC_getMenuItem(0), /Q, SPEC_doActionForDataBrowser(2)
 // 	SPEC_getMenuItem(1), /Q, Display; SPEC_doActionForDataBrowser(4)
@@ -50,7 +52,7 @@ Menu "Macros"
 	"-"
 	"(Graphs"
 	"Reselect Columns of Traces...", /Q, SPEC_reselectColumnDialog()
-	"Join Traces in a 2D Wave...", /Q, SPEC_joinTracesDialog("")
+	"Concatenate Traces in a 2D Wave...", /Q, SPEC_joinTracesDialog("")
 	"Fancy Traces...", /Q, SPEC_fancyTrancesDialog()
 	"-"
 	"(Joined 2D Wave"
@@ -513,43 +515,49 @@ Static Function doActionSubroutine(inww, option)
 			endif
 		endfor
 	elseif (option == 8) // join specified columns of the 2D waves
-		String outWaveNameStr
+		String outWaveNameStr = "SW_colConcat"
 		Variable col
 		col = yCol
 		Prompt outWaveNameStr, "Output Wave name"
 		Prompt col, "Column Index to extract"
-		DoPrompt "Join Column of Selected Waves", outWaveNameStr, col
+		DoPrompt "Concatenate Column of Selected Waves", outWaveNameStr, col
 		if (V_flag != 0) // cancel
 			return V_flag
+		elseif (strlen(outWaveNameStr) == 0)
+			return 0
 		endif
 		
+		Variable col2
+
 		// i == 0
-		if (col < 0)
-			Duplicate/O/R=[][DimSize(inww[0], 1) - col] inww[0], $(outWaveNameStr)
-		else
-			Duplicate/O/R=[][col] inww[0], $(outWaveNameStr)
-		endif
+		WAVE lw = inww[0]	
+		col2 = (col < 0) ? DimSize(lw, 1) + col : col
+		Duplicate/O/R=[][col2] lw, $(outWaveNameStr)
 		WAVE outWave = $(outWaveNameStr)
 		SetScale/P y 0, 1, outWave
 		SetDimLabel 1, i, $(NameOfWave(inww[0])), outWave
 
 		//	i > 0
 		for (i = 1; i < n; i += 1)
-			if (col < 0)
-				Duplicate/FREE/R=[][DimSize(inww[i], 1) - col] inww[i], fw
-			else
-				Duplicate/FREE/R=[][col] inww[i], fw
-			endif
+			WAVE lw = inww[i]
+			col2 = (col < 0) ? DimSize(lw, 1) + col : col
+			Duplicate/FREE/R=[][col2] inww[i], fw
 			Redimension/N=-1 fw
 			Concatenate {fw}, outWave
 			SetDimLabel 1, i, $(NameOfWave(inww[i])), outWave
 		endfor
-	elseif (option == 16) // join waves
+	elseif (option == 16) // concatenate waves
 		String waveListStr = ""
 		for (i = 0; i < n; i += 1)
 			waveListStr = waveListStr + GetWavesDataFolder(inww[i], 4) + ";"
 		endfor
-		Concatenate/O/NP waveListStr, SW_concatenated
+		Concatenate/O waveListStr, SW_concat
+	elseif (option == 32) // concatenate waves without promotion
+		waveListStr = ""
+		for (i = 0; i < n; i += 1)
+			waveListStr = waveListStr + GetWavesDataFolder(inww[i], 4) + ";"
+		endfor
+		Concatenate/O/NP waveListStr, SW_concat
 	endif
 	
 	return 0
