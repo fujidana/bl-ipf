@@ -216,7 +216,7 @@ Function SPEC_loadSpecScanFile(filePath, symbPath)
 	endif
 	
 	// Postprocess (optionally draw graphs).
-	Variable action = NumVarOrDefault("SV_postprocess", 5)
+	Variable action = NumVarOrDefault("root:SV_postprocess", 5)
 	doActionSubroutine(fww, action)
 
 	return 0
@@ -245,7 +245,7 @@ Function SPEC_load1DFile(filePath, symbPath)
 	fww[0] = fw
 
 	// Postprocess (optionally draw graphs).
-	Variable action = NumVarOrDefault("SV_postprocess", 5)
+	Variable action = NumVarOrDefault("root:SV_postprocess", 5)
 	doActionSubroutine(fww, action)
 
 	return 0
@@ -274,7 +274,7 @@ Function SPEC_loadXasFile(filePath, symbPath)
 	fww[0] = fw
 
 	// Postprocess (optionally draw graphs).
-	Variable action = NumVarOrDefault("SV_postprocess", 5)
+	Variable action = NumVarOrDefault("root:SV_postprocess", 5)
 	doActionSubroutine(fww, action)
 
 	return 0
@@ -307,21 +307,22 @@ End
 
 /// @brief Show a dialog to select postprocess action.
 Function SPEC_configDialog()
-	Variable postprocess, xCol, yCol
+	Variable postprocess
+	String xColStr, yColStr
 	
-	postprocess = NumVarOrDefault("SV_postprocess", 5)
-	xCol        = NumVarOrDefault("SV_xCol", 0)
-	yCol        = NumVarOrDefault("SV_yCol", -1)
-	Prompt postprocess, "Post-loading Action", popup, "Display last scan;Display all scans;Append last scan;Append All Scans;Do nothing;"
-	Prompt xCol, "Column Index for x-axis (0 by Default)"
-	Prompt yCol, "Column Index for y-axis (-1 by Default)"
-	DoPrompt "Postprocess postprocess", postprocess, xCol, yCol
+	postprocess = NumVarOrDefault("root:SV_postprocess", 5)
+	xColStr     = StrVarOrDefault("root:SS_xCol", "0")
+	yColStr     = StrVarOrDefault("root:SS_yCol", "-1")
+	Prompt postprocess, "Post-loading action", popup, "Display last scan;Display all scans;Append last scan;Append All Scans;Do nothing;"
+	Prompt xColStr, "Column index/label of x-axis (\"0\" by default)"
+	Prompt yColStr, "Column index/label of y-axis (\"-1\" by default)"
+	DoPrompt "Postprocess postprocess", postprocess, xColStr, yColStr
 	if (V_flag != 0) // cancel
 		return V_flag
 	endif
 	Variable/G SV_postprocess = postprocess
-	Variable/G SV_xCol        = xCol
-	Variable/G SV_yCol        = yCol
+	String/G   SS_xCol        = xColStr
+	String/G   SS_yCol        = yColStr
 	
 	return 0
 End
@@ -374,18 +375,18 @@ Function SPEC_reselectColumnDialog()
 	endif
 	graphNameStr = StringFromList(0, graphListStr)
 	
-	Variable i, n, xCol, yCol, xCol2, yCol2
-	String traceNameStr, traceListStr
+	Variable i, n, xColInd, yColInd
+	String xColStr, yColStr, traceNameStr, traceListStr
 	
-	xCol = NumVarOrDefault("SV_xCol", 0)
-	yCol = NumVarOrDefault("SV_yCol", -1)
+	xColStr = StrVarOrDefault("root:SS_xCol", "0")
+	yColStr = StrVarOrDefault("root:SS_yCol", "-1")
 	
 	// 0x01: normal graph traces, 0x04: omit hidden traces
 	traceListStr = TraceNameList(graphNameStr, ";", 0x01 | 0x04)
 	n = ItemsInList(traceListStr)
-	Prompt xCol, "Column Index for x-axis (0 by Default)"
-	Prompt yCol, "Column Index for y-axis (-1 by Default)"
-	DoPrompt "Reselect columns of Traces in " + graphNameStr, xCol, yCol
+	Prompt xColStr, "Column index/label of x-axis (\"0\" by default)"
+	Prompt yColStr, "Column index/label of y-axis (\"-1\" by default)"
+	DoPrompt "Reselect columns of Traces in " + graphNameStr, xColStr, yColStr
 	if (V_flag != 0) // cancel
 		return V_flag
 	endif
@@ -396,14 +397,37 @@ Function SPEC_reselectColumnDialog()
 		WAVE/Z yWave = TraceNameToWaveRef(graphNameStr, traceNameStr)
 		
 		if (WaveExists(xWave) && WaveDims(xWave) == 2)
-			xCol2 = xCol >= 0 ? xCol : DimSize(xWave, 1) + xCol
-			ReplaceWave/X trace=$(traceNameStr), xWave[][xCol2]	
+			if (strlen(xColStr) == 0)
+				// skip
+			elseif (isInteger(xColStr))
+				xColInd = str2num(xColStr)
+				xColInd = (xColInd >= 0) ? xColInd : DimSize(xWave, 1) + xColInd
+				ReplaceWave/X trace=$(traceNameStr), xWave[][xColInd]
+			elseif (FindDimLabel(xWave, 1, xColStr) >= 0)
+				ReplaceWave/X trace=$(traceNameStr), xWave[][%$xColStr]	
+			else
+				printf "Failed to find x-label '%s' in wave '%s'\r", xColStr, NameOfWave(xWave)
+				return 1
+			endif
 		endif
+
 		if (WaveExists(yWave) && WaveDims(yWave) == 2)
-			yCol2 = yCol >= 0 ? yCol : DimSize(yWave, 1) + yCol
-			ReplaceWave trace=$(traceNameStr), yWave[][yCol2]	
+			if (strlen(yColStr) == 0)
+				// skip
+			elseif (isInteger(yColStr))
+				yColInd = str2num(yColStr)
+				yColInd = (yColInd >= 0) ? yColInd : DimSize(yWave, 1) + yColInd
+				ReplaceWave trace=$(traceNameStr), yWave[][yColInd]
+			elseif (FindDimLabel(yWave, 1, yColStr) >= 0)
+				ReplaceWave trace=$(traceNameStr), yWave[][%$yColStr]	
+			else
+				printf "Failed to find y-label '%s' in wave '%s'\r", yColStr, NameOfWave(yWave)
+				return 1
+			endif
 		endif
 	endfor
+	
+	return 0
 End
 
 
@@ -424,14 +448,14 @@ Function SPEC_fancyTrancesDialog()
 	reversed = 1
 	xMultiplier = 1
 	yMultiplier = 1
-	Prompt colorTableStr, "Color Table", popup, CTabList()
-	Prompt cycle, "Number of Traces per Coloring Cycle"
-	Prompt reversed, "Reversed Coloring", popup, "NO;YES;"
-	Prompt xOffset, "Horizontal Offset per Trace"
-	Prompt yOffset, "Vertical Offset per Trace"
-	Prompt xMultiplier, "Horizontal Multiplier per Trace"
-	Prompt yMultiplier, "Vertical Multiplier per Trace"
-	DoPrompt "Fancy Traces in " + graphNameStr, xOffset, yOffset, xMultiplier, yMultiplier, colorTableStr, cycle, reversed
+	Prompt colorTableStr, "Color table", popup, CTabList()
+	Prompt cycle, "Number of traces per coloring cycle"
+	Prompt reversed, "Reversed coloring", popup, "NO;YES;"
+	Prompt xOffset, "Horizontal offset per trace"
+	Prompt yOffset, "Vertical offset per trace"
+	Prompt xMultiplier, "Horizontal multiplier per trace"
+	Prompt yMultiplier, "Vertical multiplier per trace"
+	DoPrompt "Fancy traces in " + graphNameStr, xOffset, yOffset, xMultiplier, yMultiplier, colorTableStr, cycle, reversed
 	if (V_flag != 0) // cancel
 		return V_flag
 	endif
@@ -483,9 +507,10 @@ Static Function doActionSubroutine(inww, option)
 	
 	Variable i, n
 	
-	Variable xCol, yCol
-	xCol = NumVarOrDefault("SV_xCol", 0)
-	yCol = NumVarOrDefault("SV_yCol", -1)
+	Variable xColInd, yColInd
+	String xColStr, yColStr
+	xColStr = StrVarOrDefault("root:SS_xCol", "0")
+	yColStr = StrVarOrDefault("root:SS_yCol", "-1")
 	n = numpnts(inww)
 	
 	if (n == 0)
@@ -493,100 +518,188 @@ Static Function doActionSubroutine(inww, option)
 	endif
 	
 	if (option == 1) // display last	
-		display2DWave(inww[n - 1], xCol, yCol)
+		show2DWave(inww[n - 1], xColStr, yColStr, 0)
 	elseif (option == 2)  // display all
 		for (i = 0; i < n; i += 1)
-			display2DWave(inww[i], xCol, yCol)
+			show2DWave(inww[i], xColStr, yColStr, 0)
 		endfor
 	elseif (option == 3) // append last
 		// create an empty window if no graph window exists.
 		if (strlen(WinList("*", ";", "WIN:1")) == 0)
-			display2DWave(inww[n - 1], xCol, yCol)
+			show2DWave(inww[n - 1], xColStr, yColStr, 0)
 		else
-			append2DWave(inww[n - 1], xCol, yCol)
+			show2DWave(inww[n - 1], xColStr, yColStr, 1)
 		endif
 	elseif (option == 4)  // append all
 		// create an empty window if no graph window exists.		
 		for (i = 0; i < n; i += 1)
 			if (i == 0 && strlen(WinList("*", ";", "WIN:1")) == 0)
-				display2DWave(inww[i], xCol, yCol)
+				show2DWave(inww[i], xColStr, yColStr, 0)
 			else
-				append2DWave(inww[i], xCol, yCol)
+				show2DWave(inww[i], xColStr, yColStr, 1)
 			endif
 		endfor
 	elseif (option == 8) // join specified columns of the 2D waves
-		String outWaveNameStr = "SW_colConcat"
-		Variable col
-		col = yCol
-		Prompt outWaveNameStr, "Output Wave name"
-		Prompt col, "Column Index to extract"
-		DoPrompt "Concatenate Column of Selected Waves", outWaveNameStr, col
-		if (V_flag != 0) // cancel
-			return V_flag
-		elseif (strlen(outWaveNameStr) == 0)
-			return 0
-		endif
-		
-		Variable col2
-
-		// i == 0
-		WAVE lw = inww[0]	
-		col2 = (col < 0) ? DimSize(lw, 1) + col : col
-		Duplicate/O/R=[][col2] lw, $(outWaveNameStr)
-		WAVE outWave = $(outWaveNameStr)
-		SetScale/P y 0, 1, outWave
-		SetDimLabel 1, i, $(NameOfWave(inww[0])), outWave
-
-		//	i > 0
-		for (i = 1; i < n; i += 1)
-			WAVE lw = inww[i]
-			col2 = (col < 0) ? DimSize(lw, 1) + col : col
-			Duplicate/FREE/R=[][col2] inww[i], fw
-			Redimension/N=-1 fw
-			Concatenate {fw}, outWave
-			SetDimLabel 1, i, $(NameOfWave(inww[i])), outWave
-		endfor
+		concatenateColumnsOf2DWaves(inww)
 	elseif (option == 16) // concatenate waves
 		String waveListStr = ""
 		for (i = 0; i < n; i += 1)
 			waveListStr = waveListStr + GetWavesDataFolder(inww[i], 4) + ";"
 		endfor
-		Concatenate/O waveListStr, SW_concat
+		Concatenate/O waveListStr, SW_concatAll
 	elseif (option == 32) // concatenate waves without promotion
 		waveListStr = ""
 		for (i = 0; i < n; i += 1)
 			waveListStr = waveListStr + GetWavesDataFolder(inww[i], 4) + ";"
 		endfor
-		Concatenate/O/NP waveListStr, SW_concat
+		Concatenate/O/NP waveListStr, SW_concatAll
 	endif
 	
 	return 0
 End
 
-Static Function display2DWave(inw, xCol, yCol)
+// Show 2D graph option: 0 (new), 1 (append)
+Static Function show2DWave(inw, xColStr, yColStr, option)
 	WAVE inw
-	Variable xCol, yCol
+	String xColStr, yColStr
+	Variable option
 
-	Variable xCol2, yCol2
-	xCol2 = xCol >= 0 ? xCol : DimSize(inw, 1) + xCol
-	yCol2 = yCol >= 0 ? yCol : DimSize(inw, 1) + yCol
-	Display inw[][yCol2] vs inw[][xCol2]
-	Label bottom GetDimLabel(inw, 1, 0)
-	Label left GetDimLabel(inw, 1, DimSize(inw, 1) -  1)
+	Variable isXColInteger, isYColInteger, xColInd, yColInd
+	isXColInteger = isInteger(xColStr)
+	isYColInteger = isInteger(yColStr)
+
+	if (isXColInteger && isYColInteger)
+		xColInd = str2num(xColStr)
+		xColInd = (xColInd >= 0) ? xColInd : DimSize(inw, 1) + xColInd
+		yColInd = str2num(yColStr)
+		yColInd = (yColInd >= 0) ? yColInd : DimSize(inw, 1) + yColInd
+
+		if (option == 0)
+			Display inw[][yColInd] vs inw[][xColInd]
+		else
+			AppendToGraph inw[][yColInd] vs inw[][xColInd]
+		endif
+	elseif (isXColInteger)
+		xColInd = str2num(xColStr)
+		xColInd = (xColInd >= 0) ? xColInd : DimSize(inw, 1) + xColInd
+		yColInd = FindDimLabel(inw, 1, yColStr)
+		if (yColInd < 0)
+			printf "Failed to find y-label '%s' in wave '%s'\r", yColStr, NameOfWave(inw)
+			return 1
+		endif
+		
+		if (option == 0)
+			Display inw[][%$yColStr] vs inw[][xColInd]
+		else
+			AppendToGraph inw[][%$yColStr] vs inw[][xColInd]
+		endif
+	elseif (isYColInteger)
+		xColInd = FindDimLabel(inw, 1, xColStr)
+		if (xColInd < 0)
+			printf "Failed to find x-label '%s' in wave '%s'\r", xColStr, NameOfWave(inw)
+			return 1
+		endif
+		yColInd = str2num(yColStr)
+		yColInd = (yColInd >= 0) ? yColInd : DimSize(inw, 1) + yColInd
+		
+		if (option == 0)
+			Display inw[][yColInd] vs inw[][%$xColStr]
+		else
+			AppendToGraph inw[][yColInd] vs inw[][%$xColStr]
+		endif
+	else
+		xColInd = FindDimLabel(inw, 1, xColStr)
+		if (xColInd < 0)
+			printf "Failed to find x-label '%s' in wave '%s'\r", xColStr, NameOfWave(inw)
+			return 1
+		endif
+		yColInd = FindDimLabel(inw, 1, yColStr)
+		if (yColInd < 0)
+			printf "Failed to find y-label '%s' in wave '%s'\r", yColStr, NameOfWave(inw)
+			return 1
+		endif
+		
+		if (option == 0)
+			Display inw[][%$yColStr] vs inw[][%$xColStr]
+		else
+			AppendToGraph inw[][%$yColStr] vs inw[][%$xColStr]
+		endif
+	endif
+	
+	if (option == 0)
+		Label bottom GetDimLabel(inw, 1, xColInd)
+		Label left GetDimLabel(inw, 1, yColInd)
+	endif
+	
+	return 0
+End
+
+Static Function concatenateColumnsOf2DWaves(inww)
+	WAVE/WAVE inww
+	
+	String outWaveNameStr, colStr
+	outWaveNameStr = "SW_concatCols"
+	colStr = StrVarOrDefault("root:SS_yCol", "-1")
+	Prompt outWaveNameStr, "Output wave name"
+	Prompt colStr, "Column index/label to extract"
+	DoPrompt "Concatenate column of selected waves", outWaveNameStr, colStr
+	if (V_flag != 0) // cancel
+		return V_flag
+	elseif (strlen(outWaveNameStr) == 0)
+		return 0
+	endif
+
+	Variable colInd
+
+	// i == 0
+	WAVE lw = inww[0]
+	if (isInteger(colStr))
+		colInd = str2num(colStr)
+		colInd = (colInd >= 0) ? colInd : DimSize(lw, 1) + colInd
+	else
+		colInd = FindDimLabel(lw, 1, colStr)
+		if (colInd < 0)
+			printf "Failed to find y-label '%s' in wave '%s'\r", colStr, NameOfWave(lw)
+			return 1
+		endif
+	endif
+	Duplicate/O/R=[][colInd] lw, $(outWaveNameStr)
+	WAVE outWave = $(outWaveNameStr)
+	SetScale/P y 0, 1, outWave
+	SetDimLabel 1, 0, $(NameOfWave(inww[0])), outWave
+
+	//	i > 0
+	Variable i, n
+	n = numpnts(inww)
+	
+	for (i = 1; i < n; i += 1)
+		WAVE lw = inww[i]
+		if (isInteger(colStr))
+			colInd = str2num(colStr)
+			colInd = (colInd >= 0) ? colInd : DimSize(lw, 1) + colInd
+		else
+			colInd = FindDimLabel(lw, 1, colStr)
+			if (colInd < 0)
+				printf "Failed to find y-label '%s' in wave '%s'\r", colStr, NameOfWave(lw)
+				return 1
+			endif
+		endif
+		Duplicate/FREE/R=[][colInd] lw, fw_tmp
+		Redimension/N=-1 fw_tmp
+		Concatenate {fw_tmp}, outWave
+		SetDimLabel 1, i, $(NameOfWave(lw)), outWave
+	endfor
 End
 
 
-Static Function append2DWave(inw, xCol, yCol)
-	WAVE inw
-	Variable xCol, yCol
+Static Function isInteger(colStr)
+	String colStr
 
-	Variable xCol2, yCol2
-	xCol2 = xCol >= 0 ? xCol : DimSize(inw, 1) + xCol
-	yCol2 = yCol >= 0 ? yCol : DimSize(inw, 1) + yCol
-	AppendToGraph inw[][yCol2] vs inw[][xCol2]
+	//	allow decimal and hexadecimal
+	return GrepString(colStr, "^\s*[+-]?(\d+|0[xX][0-9a-fA-F]+)\s*$")
 End
 
-
+	
 // This assume all column length is equal.
 Function SPEC_joinTracesDialog(graphNameStr)
 	String graphNameStr
@@ -594,8 +707,10 @@ Function SPEC_joinTracesDialog(graphNameStr)
 	String traceListStr, traceNameStr, traceInfoStr
 	
 	String xOutWaveNameStr, yOutWaveNameStr
-	Prompt xOutWaveNameStr, "Output Wave name of Horizontal-axis traces"
-	Prompt yOutWaveNameStr, "Output Wave name of Vertical-axis traces"
+	xOutWaveNameStr = "SW_concatXTrace"
+	xOutWaveNameStr = "SW_concatYTrace"
+	Prompt xOutWaveNameStr, "Output wave name of horizontal-axis traces"
+	Prompt yOutWaveNameStr, "Output wave name of vertical-axis traces"
 	DoPrompt "Extract traces in " + graphNameStr, xOutWaveNameStr, yOutWaveNameStr
 	if (V_flag != 0) // cancel
 		return V_flag
@@ -664,7 +779,7 @@ Function SPEC_multicolDisplayDialog()
 	Prompt colEnd, "Last column index (-1 represents the last index)"
 	Prompt colDelta, "Incremental value"
 	
-	DoPrompt "Display Columns", xWaveNameStr, yWaveNameStr, colStart, colEnd, colDelta
+	DoPrompt "Display columns", xWaveNameStr, yWaveNameStr, colStart, colEnd, colDelta
 	if (V_flag != 0) // cancel
 		return V_flag
 	endif
