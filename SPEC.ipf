@@ -308,21 +308,24 @@ End
 /// @brief Show a dialog to select postprocess action.
 Function SPEC_configDialog()
 	Variable postprocess
-	String xColStr, yColStr
+	String xColStr, yColStr, colorTable
 	
 	postprocess = NumVarOrDefault("root:SV_postprocess", 5)
 	xColStr     = StrVarOrDefault("root:SS_xCol", "0")
 	yColStr     = StrVarOrDefault("root:SS_yCol", "-1")
+	colorTable  = StrVarOrDefault("root:SS_colorTable", "Rainbow")
 	Prompt postprocess, "Post-loading action", popup, "Display last scan;Display all scans;Append last scan;Append All Scans;Do nothing;"
 	Prompt xColStr, "Column index/label of x-axis (\"0\" by default)"
 	Prompt yColStr, "Column index/label of y-axis (\"-1\" by default)"
-	DoPrompt "Postprocess postprocess", postprocess, xColStr, yColStr
+	Prompt colorTable, "Trace Color Tables", popup, CTabList()
+	DoPrompt "Postprocess postprocess", postprocess, xColStr, yColStr, colorTable
 	if (V_flag != 0) // cancel
 		return V_flag
 	endif
 	Variable/G SV_postprocess = postprocess
 	String/G   SS_xCol        = xColStr
 	String/G   SS_yCol        = yColStr
+	String/G   SS_colorTable  = colorTable
 	
 	return 0
 End
@@ -440,60 +443,88 @@ Function SPEC_fancyTrancesDialog()
 		return 1
 	endif
 	graphNameStr = StringFromList(0, graphListStr)
-	
-	Variable cycle, reversed, xOffset, yOffset, xMultiplier, yMultiplier
-	String colorTableStr
-	colorTableStr = "Rainbow"
-	cycle = 0
-	reversed = 1
-	xMultiplier = 1
-	yMultiplier = 1
+
+	Variable colorCycle, xOffset, yOffset, xMultiplier, yMultiplier, tmpNum
+	String colorTableStr, userDataStr, tmpStr
+
+	// restore user data
+	userDataStr = GetUserData(graphNameStr, "", "SPEC_fancyTraces")
+	tmpStr = StringByKey("colorTable", userDataStr)
+	if (strlen(tmpStr) != 0)
+		colorTableStr = tmpStr
+	else
+		colorTableStr = StrVarOrDefault("root:SS_colorTable", "Rainbow")
+	endif
+	tmpNum = NumberByKey("colorCycle", userDataStr)
+	colorCycle = numtype(tmpNum) != 2 ? tmpNum : 1
+	tmpNum = NumberByKey("xOffset", userDataStr)
+	xOffset = numtype(tmpNum) != 2 ? tmpNum : 0
+	tmpNum = NumberByKey("yOffset", userDataStr)
+	yOffset = numtype(tmpNum) != 2 ? tmpNum : 0
+	tmpNum = NumberByKey("xMultiplier", userDataStr)
+	xMultiplier = numtype(tmpNum) != 2 ? tmpNum : 1
+	tmpNum = NumberByKey("yMultiplier", userDataStr)
+	yMultiplier = numtype(tmpNum) != 2 ? tmpNum : 1
+
+	// show a dialog
 	Prompt colorTableStr, "Color table", popup, CTabList()
-	Prompt cycle, "Number of traces per coloring cycle"
-	Prompt reversed, "Reversed coloring", popup, "NO;YES;"
-	Prompt xOffset, "Horizontal offset per trace"
-	Prompt yOffset, "Vertical offset per trace"
+	Prompt colorCycle,  "Coloring cycle (0: not recolor, 1/-1: auto, negative: reversed color)"
+	Prompt xOffset,     "Horizontal offset per trace"
+	Prompt yOffset,     "Vertical offset per trace"
 	Prompt xMultiplier, "Horizontal multiplier per trace"
 	Prompt yMultiplier, "Vertical multiplier per trace"
-	DoPrompt "Fancy traces in " + graphNameStr, xOffset, yOffset, xMultiplier, yMultiplier, colorTableStr, cycle, reversed
+	DoPrompt "Fancy traces in " + graphNameStr, xOffset, yOffset, xMultiplier, yMultiplier, colorTableStr, colorCycle
 	if (V_flag != 0) // cancel
 		return V_flag
 	endif
-	reversed -= 1
-	
-	ColorTab2Wave $colorTableStr
-	WAVE M_colors
-	
+
+	colorCycle = round(colorCycle)
+
+	// store selected values in a user data of the window.
+	sprintf tmpStr, "colorTable:%s;colorCycle:%d;xOffset:%g;yOffset:%g;xMultiplier:%g;yMultiplier:%g;", colorTableStr, colorCycle, xOffset, yOffset, xMultiplier, yMultiplier
+	SetWindow $(graphNameStr) userData(SPEC_fancyTraces)=tmpStr
+
 	Variable i, n, red, green, blue
-	String traceListStr
+	String traceListStr, traceNameStr
+
 	// 0x01: normal graph traces, 0x04: omit hidden traces
 	traceListStr = TraceNameList(graphNameStr, ";", 0x01 | 0x04)
 	n = ItemsInList(traceListStr)
 	
-	if (cycle == 0)
-		cycle = n
+	// Prepare a color table wave.
+
+	// If `colorCycle` is negative, prepare the color table reversed.
+	ColorTab2Wave $colorTableStr
+	WAVE M_colors
+	if (colorCycle < 0)
+		ImageTransform flipRows, M_colors
+		colorCycle = abs(colorCycle)
 	endif
-	
-	Make/N=(cycle, 3)/U/I/FREE M_colors2
-	M_colors2 = interp2d(M_colors, p / (cycle - 1) * (DimSize(M_colors, 0) - 1), q)
-	
-	
-	if (reversed)
-		ImageTransform flipRows, M_colors2
+
+	// If `colorCycle` == 1, set the color cycle to the total trace number.
+	if (colorCycle == 1)
+		colorCycle = n
 	endif
-	
+
+	// Prepare an interpolated color table wave.
+	Make/N=(colorCycle, 3)/U/I/FREE M_colors2
+	M_colors2 = interp2d(M_colors, p / (colorCycle - 1) * (DimSize(M_colors, 0) - 1), q)
+
 	for (i = 0; i < n; i += 1)
-		red   = M_colors2[mod(i, cycle)][0]
-		green = M_colors2[mod(i, cycle)][1]
-		blue  = M_colors2[mod(i, cycle)][2]
-		ModifyGraph/W=$(graphNameStr) rgb($StringFromList(i, traceListStr))=(red, green, blue)
-		ModifyGraph/W=$(graphNameStr) offset($StringFromList(i, traceListStr))={xOffset * i, yOffset * i}
-		if (xMultiplier == 1 && yMultiplier == 1)
-			ModifyGraph/W=$(graphNameStr) muloffset($StringFromList(i, traceListStr))={0, 0}
-		else
-			ModifyGraph/W=$(graphNameStr) muloffset($StringFromList(i, traceListStr))={xMultiplier^i, yMultiplier^i}
+		traceNameStr = StringFromList(i, traceListStr)
+		if (colorCycle != 0)
+			red   = M_colors2[mod(i, colorCycle)][0]
+			green = M_colors2[mod(i, colorCycle)][1]
+			blue  = M_colors2[mod(i, colorCycle)][2]
+			ModifyGraph/W=$(graphNameStr) rgb($traceNameStr)=(red, green, blue)
 		endif
-		
+
+		ModifyGraph/W=$(graphNameStr) offset($traceNameStr)={xOffset * i, yOffset * i}
+		if (xMultiplier == 1 && yMultiplier == 1)
+			ModifyGraph/W=$(graphNameStr) muloffset($traceNameStr)={0, 0}
+		else
+			ModifyGraph/W=$(graphNameStr) muloffset($traceNameStr)={xMultiplier^i, yMultiplier^i}
+		endif
 	endfor
 
 	return 0
@@ -771,8 +802,7 @@ End
 Function SPEC_multicolDisplayDialog()
 	String xWaveNameStr, yWaveNameStr
 	Variable colStart = 0, colEnd = -1, colDelta = 1
-	
-	
+
 	Prompt xWaveNameStr, "1-dimensional wave for horizontal axis", popup, "_calculated_;" + WaveList("*", ";", "TEXT:0,BYTE:0,WORD:0,DIMS:1")
 	Prompt yWaveNameStr, "2-dimensional wave for vertical axis", popup, WaveList("*", ";", "TEXT:0,BYTE:0,WORD:0,DIMS:2,MINCOLS:4")
 	Prompt colStart, "First column index"
