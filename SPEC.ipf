@@ -351,7 +351,7 @@ Function SPEC_doActionForDataBrowser(option)
 		tmpStr = GetBrowserSelection(i)
 		if (strlen(tmpStr) == 0)
 			break
-		elseif (WaveExists($tmpStr) && WaveDims($tmpStr) == 2 && (WaveType($tmpStr) & 0x02 || WaveType($tmpStr) & 0x04))
+		elseif (WaveExists($tmpStr) && (WaveType($tmpStr) & 0x02 || WaveType($tmpStr) & 0x04))
 			Redimension/N=(j + 1) fww
 			fww[j] = $tmpStr
 			j += 1
@@ -589,80 +589,92 @@ Static Function doActionSubroutine(inww, option)
 	return 0
 End
 
-// Show 2D graph option: 0 (new), 1 (append)
+// Show 2D graph.
+//
+// option: 0 (new), 1 (append)
+// Return 0 if no error occurred. Otherwise return a nonzero value.
 Static Function show2DWave(inw, xColStr, yColStr, option)
 	WAVE inw
 	String xColStr, yColStr
 	Variable option
 
-	Variable isXColInteger, isYColInteger, xColInd, yColInd
-	isXColInteger = isInteger(xColStr)
-	isYColInteger = isInteger(yColStr)
+	if (WaveDims(inw) == 1)
+		if (option == 0)
+			Display inw
+		else
+			AppendToGraph inw
+		endif
+		return 0
+	elseif (WaveDims(inw) == 2)
+		Variable isXColInteger, isYColInteger, xColInd, yColInd
+		isXColInteger = isInteger(xColStr)
+		isYColInteger = isInteger(yColStr)
 
-	if (isXColInteger && isYColInteger)
-		xColInd = str2num(xColStr)
-		xColInd = (xColInd >= 0) ? xColInd : DimSize(inw, 1) + xColInd
-		yColInd = str2num(yColStr)
-		yColInd = (yColInd >= 0) ? yColInd : DimSize(inw, 1) + yColInd
+		if (isXColInteger && isYColInteger)
+			xColInd = str2num(xColStr)
+			xColInd = (xColInd >= 0) ? xColInd : DimSize(inw, 1) + xColInd
+			yColInd = str2num(yColStr)
+			yColInd = (yColInd >= 0) ? yColInd : DimSize(inw, 1) + yColInd
+
+			if (option == 0)
+				Display inw[][yColInd] vs inw[][xColInd]
+			else
+				AppendToGraph inw[][yColInd] vs inw[][xColInd]
+			endif
+		elseif (isXColInteger)
+			xColInd = str2num(xColStr)
+			xColInd = (xColInd >= 0) ? xColInd : DimSize(inw, 1) + xColInd
+			yColInd = FindDimLabel(inw, 1, yColStr)
+			if (yColInd < 0)
+				printf "Failed to find y-label '%s' in wave '%s'\r", yColStr, NameOfWave(inw)
+				return 1
+			endif
+
+			if (option == 0)
+				Display inw[][%$yColStr] vs inw[][xColInd]
+			else
+				AppendToGraph inw[][%$yColStr] vs inw[][xColInd]
+			endif
+		elseif (isYColInteger)
+			xColInd = FindDimLabel(inw, 1, xColStr)
+			if (xColInd < 0)
+				printf "Failed to find x-label '%s' in wave '%s'\r", xColStr, NameOfWave(inw)
+				return 1
+			endif
+			yColInd = str2num(yColStr)
+			yColInd = (yColInd >= 0) ? yColInd : DimSize(inw, 1) + yColInd
+
+			if (option == 0)
+				Display inw[][yColInd] vs inw[][%$xColStr]
+			else
+				AppendToGraph inw[][yColInd] vs inw[][%$xColStr]
+			endif
+		else
+			xColInd = FindDimLabel(inw, 1, xColStr)
+			if (xColInd < 0)
+				printf "Failed to find x-label '%s' in wave '%s'\r", xColStr, NameOfWave(inw)
+				return 1
+			endif
+			yColInd = FindDimLabel(inw, 1, yColStr)
+			if (yColInd < 0)
+				printf "Failed to find y-label '%s' in wave '%s'\r", yColStr, NameOfWave(inw)
+				return 1
+			endif
+
+			if (option == 0)
+				Display inw[][%$yColStr] vs inw[][%$xColStr]
+			else
+				AppendToGraph inw[][%$yColStr] vs inw[][%$xColStr]
+			endif
+		endif
 
 		if (option == 0)
-			Display inw[][yColInd] vs inw[][xColInd]
-		else
-			AppendToGraph inw[][yColInd] vs inw[][xColInd]
+			Label bottom GetDimLabel(inw, 1, xColInd)
+			Label left GetDimLabel(inw, 1, yColInd)
 		endif
-	elseif (isXColInteger)
-		xColInd = str2num(xColStr)
-		xColInd = (xColInd >= 0) ? xColInd : DimSize(inw, 1) + xColInd
-		yColInd = FindDimLabel(inw, 1, yColStr)
-		if (yColInd < 0)
-			printf "Failed to find y-label '%s' in wave '%s'\r", yColStr, NameOfWave(inw)
-			return 1
-		endif
-		
-		if (option == 0)
-			Display inw[][%$yColStr] vs inw[][xColInd]
-		else
-			AppendToGraph inw[][%$yColStr] vs inw[][xColInd]
-		endif
-	elseif (isYColInteger)
-		xColInd = FindDimLabel(inw, 1, xColStr)
-		if (xColInd < 0)
-			printf "Failed to find x-label '%s' in wave '%s'\r", xColStr, NameOfWave(inw)
-			return 1
-		endif
-		yColInd = str2num(yColStr)
-		yColInd = (yColInd >= 0) ? yColInd : DimSize(inw, 1) + yColInd
-		
-		if (option == 0)
-			Display inw[][yColInd] vs inw[][%$xColStr]
-		else
-			AppendToGraph inw[][yColInd] vs inw[][%$xColStr]
-		endif
-	else
-		xColInd = FindDimLabel(inw, 1, xColStr)
-		if (xColInd < 0)
-			printf "Failed to find x-label '%s' in wave '%s'\r", xColStr, NameOfWave(inw)
-			return 1
-		endif
-		yColInd = FindDimLabel(inw, 1, yColStr)
-		if (yColInd < 0)
-			printf "Failed to find y-label '%s' in wave '%s'\r", yColStr, NameOfWave(inw)
-			return 1
-		endif
-		
-		if (option == 0)
-			Display inw[][%$yColStr] vs inw[][%$xColStr]
-		else
-			AppendToGraph inw[][%$yColStr] vs inw[][%$xColStr]
-		endif
+		return 0
 	endif
-	
-	if (option == 0)
-		Label bottom GetDimLabel(inw, 1, xColInd)
-		Label left GetDimLabel(inw, 1, yColInd)
-	endif
-	
-	return 0
+	return 1
 End
 
 Static Function concatenateColumnsOf2DWaves(inww)
