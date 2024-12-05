@@ -1,26 +1,24 @@
 #pragma TextEncoding = "UTF-8"
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 
-//#include "SFWave"
 
 // Written by So Fujinami on 2019-10-24.
 
 //#define IGNORES_SCAN_INDEX
 //#define SAVES_EXTRA_WAVES
+//#define NOT_USE_SPEC_MNEMONIC
+//#define SPEC_LOAD_ONE_ROW_DATA_FILE
 
 
 //Static Constant kTimeZone = +9
 
 
-//#define NOT_USE_SPEC_MNEMONIC
-
-
 // load a Spec data file and return a free wave reference wave
 Function/WAVE SPEC_IO_loadSpecScanFile(filePath, symbPath)
 	String filePath, symbPath
-	
+
 	Variable fp
-	
+
 	// open a file pointer
 	Open/R/Z=1/P=$symbPath fp as filePath
 	if (V_flag != 0) // -1: user cancelled
@@ -32,60 +30,101 @@ Function/WAVE SPEC_IO_loadSpecScanFile(filePath, symbPath)
 	Make/I/FREE/N=0 fw_blockStart, fw_blockEnd, fw_dataStart, fw_scanInd
 	Make/D/FREE/N=0 fw_scanDate
 	Make/T/FREE/N=0 ftw_scanCmd, ftw_dimLabel
-	
+
 	SetScale d  0, 0, "dat", fw_scanDate
 
-	Variable lineInd, blockInd, isInBlock, scanInd
-	String lineStr, scanCmd
-	
+	Variable lineInd, blockNum, isInBlock, scanInd, cols, rows
+	String lineStr, scanCmd, waveNameStr
+
 	Variable year, month, day, hour, minute, second
-	String weekdayStr,  monthStr
-	
+	String weekdayStr, monthStr
+
 	lineInd = 0
-	blockInd = 0
+	blockNum = 0
 	isInBlock = 0
 
 	//	scan file content and separate it to scan blocks.
 	do
 		FReadLine fp, lineStr
-		
+
 		if (strlen(lineStr) == 0)
 			// Quit if the scan reaches EOF
-			if (blockInd > 0)
-				fw_blockEnd[blockInd - 1] = lineInd
+			if (blockNum > 0)
+				fw_blockEnd[blockNum - 1] = lineInd
 			endif
 			break
 		elseif (isInBlock)
 			// Skip until empty line if is in scan block
 			if (stringmatch(lineStr, "\r"))
-				fw_blockEnd[blockInd - 1] = lineInd
+				fw_blockEnd[blockNum - 1] = lineInd
 				isInBlock = 0
+
+			// Capture label names
 			elseif (stringmatch(lineStr, "#L *"))
-				ftw_dimLabel[blockInd - 1] = lineStr[3,  strlen(lineStr) - 2]
-				fw_dataStart[blockInd - 1] = lineInd + 1
+				ftw_dimLabel[blockNum - 1] = lineStr[3,  strlen(lineStr) - 2]
+				fw_dataStart[blockNum - 1] = lineInd + 1
 			elseif (stringmatch(lineStr, "#D *"))
 				// only accept the date line (#D ...) just below the scan line (#S ...).
-				if (lineInd == fw_blockStart[blockInd - 1] + 1)
+				if (lineInd == fw_blockStart[blockNum - 1] + 1)
 					sscanf lineStr[3, strlen(lineStr) - 2], "%s %s %d %d:%d:%d %d", weekdayStr, monthStr, day, hour, minute, second, year
 					if (V_flag == 7)
 						month = WhichListItem(monthStr, "Jan;Feb:Mar;Apr;May;Jun;Jul;Aug;Sep;Oct;Nov;Dec;") + 1
-						fw_scanDate[blockInd - 1] = date2secs(year, month, day) + (hour * 60 + minute) * 60 +  second 
+						fw_scanDate[blockNum - 1] = date2secs(year, month, day) + (hour * 60 + minute) * 60 +  second 
 					endif
 				endif
+
+			// Skip other commend (header) lines
+			elseif (stringmatch(lineStr, "#*"))
+
+			// Parse lines that do not start with "#" as a data array
+			else
+#ifdef SPEC_LOAD_ONE_ROW_DATA_FILE
+				if (rows == 0)
+					cols = ItemsInList(lineStr, " ")
+					if (cols <= 0)
+						Close fp
+						printf "Loading Error. Failed in spliting data: %s.\r", filePath
+						return $""
+					endif
+					sprintf waveNameStr, "%s_%03d", ParseFilePath(3, filePath, ":", 0, 0), blockNum
+					Make/D/O/N=(1, cols) $(waveNameStr)
+					WAVE lw_data = $(waveNameStr)
+					fww[blockNum - 1] = lw_data
+					lw_data[rows][] = str2num(StringFromList(q, lineStr, " "))
+					rows += 1
+				else
+					if (cols != ItemsInList(lineStr, " "))
+						Close fp
+						printf "Loading Error. Mismatch of column number: %s.\r", filePath
+						return $""
+					endif
+					Redimension/N=(rows + 1, cols) lw_data
+					lw_data[rows][] = str2num(StringFromList(q, lineStr, " "))
+					rows += 1
+				endif
+#else
+			
+#endif
 			endif
+				
 		else
 			// Skip until scan block start if it is out of the scan block
 			sscanf lineStr, "#S %d %[^\r]", scanInd, scanCmd
 			if (V_flag > 1)
-				Redimension/N=(blockInd + 1) fw_blockStart, fw_blockEnd, fw_dataStart, fw_scanInd
-				Redimension/N=(blockInd + 1) fw_scanDate
-				Redimension/N=(blockInd + 1) ftw_scanCmd, ftw_dimLabel
-				fw_blockStart[blockInd] = lineInd
-				fw_dataStart[blockInd]  = lineInd
-				fw_scanInd[blockInd]    = scanInd
-				fw_scanDate[blockInd]   = 0
-				ftw_scanCmd[blockInd]   = scanCmd
-				blockInd += 1
+				Redimension/N=(blockNum + 1) fww
+				Redimension/N=(blockNum + 1) fw_blockStart, fw_blockEnd, fw_dataStart, fw_scanInd
+				Redimension/N=(blockNum + 1) fw_scanDate
+				Redimension/N=(blockNum + 1) ftw_scanCmd, ftw_dimLabel
+
+				fw_blockStart[blockNum] = lineInd
+				fw_dataStart[blockNum]  = lineInd
+				fw_scanInd[blockNum]    = scanInd
+				fw_scanDate[blockNum]   = 0
+				ftw_scanCmd[blockNum]   = scanCmd
+				cols = 0
+				rows = 0
+
+				blockNum += 1
 				isInBlock = 1
 			endif
 		endif
@@ -93,14 +132,16 @@ Function/WAVE SPEC_IO_loadSpecScanFile(filePath, symbPath)
 	while (1)
 
 	Close fp
-	
-	Variable i, j, blockStart, blockEnd, blockStartPrev, scanIndPrev
-	String waveNameStr, dimLabelStr
-	
-	Make/FREE/WAVE/N=(blockInd) fww	
-	blockStartPrev = 0
-	scanIndPrev = 0
-	for (i = 0; i < blockInd; i += 1)
+
+	Variable i, j, blockStart, blockEnd
+	String dimLabelStr
+
+	// Variable blockStartPrev, scanIndPrev
+	// blockStartPrev = 0
+	// scanIndPrev = 0
+
+	for (i = 0; i < blockNum; i += 1)
+		Variable dataWaveInd
 		blockStart = fw_blockStart[i]
 		blockEnd   = fw_blockEnd[i]
 		scanInd    = fw_scanInd[i]
@@ -109,27 +150,32 @@ Function/WAVE SPEC_IO_loadSpecScanFile(filePath, symbPath)
 
 		// set the wave name to be saved
 //#ifdef IGNORES_SCAN_INDEX
-		sprintf waveNameStr, "%s_%03d", ParseFilePath(3, filePath, ":", 0, 0), i + 1
+		dataWaveInd = i + 1
 //#else
 //		if (scanInd <= scanIndPrev)
 //			printf "Scan number is not incremental (prev: #%d at line %d, curr: #%d at line %d). ", scanIndPrev, blockStartPrev + 1, scanInd, blockStart + 1
 //			printf "The older scan data may be overwritten.\r"
 //		endif
-//		sprintf waveNameStr, "%s_%03d", ParseFilePath(3, filePath, ":", 0, 0), scanInd
+//		dataWaveInd = scanInd
 //		scanIndPrev = scanInd
 //		blockStartPrev = blockStart
 //#endif
+		sprintf waveNameStr, "%s_%03d", ParseFilePath(3, filePath, ":", 0, 0), dataWaveInd
+
+#ifdef SPEC_LOAD_ONE_ROW_DATA_FILE
+		WAVE lw_data = fww[i]
+#else
 		// load wave
 		LoadWave/G/W/M/L={0, blockStart, (blockEnd - blockStart), 0, 0}/D/N=tmp_spec_wave/O/Q/P=$symbPath filePath
 		if (V_flag == 0)
-			printf "Spec Loading Error at %dth scan block (line between %d--%d).\r", i + 1, blockStart + 1, blockEnd + 1
+			printf "Spec Loading Error at scan block #%d (line between %d--%d).\r", i + 1, blockStart + 1, blockEnd + 1
 			continue
 		endif
 		Duplicate/O $(StringFromList(0, S_waveNames)), $(waveNameStr)
-		WAVE lw_data = $(waveNameStr)
 		KillWaves/Z $(StringFromList(0, S_waveNames))
-		
+		WAVE lw_data = $(waveNameStr)
 		fww[i] = lw_data
+#endif
 
 		// add column labels
 		if (strlen(dimLabelStr) > 0)

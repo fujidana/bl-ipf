@@ -7,6 +7,7 @@
 #include "SPEC_IO"
 #include "SPEC_util"
 
+//#define SPEC_LOAD_ONE_ROW_DATA_FILE
 
 
 /// Module to handle SPEC scan data.
@@ -25,19 +26,13 @@ Static StrConstant ksAllFileFilter  = "All Files:*;"
 
 Menu "Load Waves"
 	"-"
-	"Load SPEC Scan Files...", /Q, SPEC_openSpecFileDialog()
-	"Load 1D Files...",        /Q, SPEC_open1DFileDialog()
-	"Load XAS Files...",       /Q, SPEC_openXasFileDialog()
-	"Load MCA Files...",       /Q, SPEC_openMcaFileDialog()
+	"Load SPEC Scan Files...",  /Q, SPEC_openSpecFileDialog()
+	"Load 1D Files...",         /Q, SPEC_open1DFileDialog()
+	"Load PF9809 XAS Files...", /Q, SPEC_openXasFileDialog()
+	"Load MCA Array Files...",  /Q, SPEC_openMcaFileDialog()
 End
 
 Menu "Macros"
-//	"(Load Waves"
-//	"Load SPEC Scan Files...", /Q, SPEC_openSpecFileDialog()
-//	"Load 1D Files...",        /Q, SPEC_open1DFileDialog()
-//	"Load XAS Files...",       /Q, SPEC_openXasFileDialog()
-//	"Load MCA Files...",       /Q, SPEC_openMcaFileDialog()
-//	"-"
 	"(Data Browser"
 	"Display Selection Separately", /Q, SPEC_doActionForDataBrowser(2)
 	"Display Selection Together",   /Q, Display; SPEC_doActionForDataBrowser(4)
@@ -66,7 +61,7 @@ End
 
 // Function/S SPEC_getMenuItem(i)
 // 	Variable i
-	
+
 // 	String tmpStr = ""
 // 	if (strlen(GetBrowserSelection(-1)) == 0)
 // 		tmpStr = "("
@@ -91,8 +86,8 @@ End
 Static Function BeforeFileOpenHook(refNum, fileNameStr, pathNameStr, fileTypeStr, fileCreatorStr, fileKind)
 	Variable refNum, fileKind
 	String fileNameStr, pathNameStr, fileTypeStr, fileCreatorStr
-	
-	// it must return 1 in order to prevent Igor from trying to load the file in a built-in manner.
+
+	// This function must return 1 in order to prevent Igor from trying to load the file in a built-in manner.
 	String extension = ParseFilePath(4, fileNameStr, ":", 0, 0)
 	if (fileKind == 0 && stringmatch(extension, "spec"))
 		return (SPEC_loadSpecScanFile(fileNameStr, pathNameStr) == 0)
@@ -284,6 +279,46 @@ End
 Function/WAVE SPEC_loadMcaFile(filePath, symbPath)
 	String filePath, symbPath
 
+#ifdef SPEC_LOAD_ONE_ROW_DATA_FILE
+	Variable fp, rows, cols
+	String lineStr
+	Open/R/P=$(symbPath)/Z fp as filePath
+	if (V_flag != 0)
+		printf "Loading Error. Failed in opening file: %s.\r", filePath
+		return $""
+	endif
+	rows = 0
+	do
+		FReadLine fp, lineStr
+
+		if (strlen(lineStr) == 0)
+			break
+		elseif (stringmatch(lineStr, "#*"))
+			continue
+		elseif (rows == 0)
+			cols = ItemsInList(lineStr, " ")
+			if (cols <= 0)
+				Close fp
+				printf "Loading Error. Failed in spliting data: %s.\r", filePath
+				return $""
+			endif
+			Make/D/O/N=(cols, 1) SW2_data_mca_tmp0
+			SW2_data_mca_tmp0[][rows] = str2num(StringFromList(p, lineStr, " "))
+			rows += 1
+		else
+			if (cols != ItemsInList(lineStr, " "))
+				Close fp
+				printf "Loading Error. Mismatch of column number: %s.\r", filePath
+				return $""
+			endif
+			Redimension/N=(cols, rows + 1) SW2_data_mca_tmp0
+			SW2_data_mca_tmp0[][rows] = str2num(StringFromList(p, lineStr, " "))
+			rows += 1
+		endif
+	while (1)
+	Close fp
+	WAVE lw_data = SW2_data_mca_tmp0
+#else
 	LoadWave/G/M/D/P=$(symbPath)/N=SW2_data_mca_tmp/Q filePath
 	if (V_flag == 0)
 		printf "Loading Error.\r"
@@ -291,16 +326,17 @@ Function/WAVE SPEC_loadMcaFile(filePath, symbPath)
 	endif
 	WAVE lw_data = $StringFromList(0, S_waveNames)
 	MatrixTranspose lw_data
-	
+#endif
+
 	WAVE/Z SW_mcaParam
 	if (WaveExists(SW_mcaParam))
 		SetScale/P x SW_mcaParam[%chOffset], SW_mcaParam[%chSlope], "eV", lw_data
 	endif
-	
+
 	String waveNameStr
 	waveNameStr = ParseFilePath(3, filePath, ":", 0, 0)
 	Duplicate/O lw_data, $waveNameStr
-	
+
 	return $waveNameStr
 End
 
