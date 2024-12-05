@@ -17,19 +17,17 @@
 /// Tested by Igor Pro 8.0 on macOS.
 
 
-Static StrConstant ksScanFileFilter = "spec scan data file (*.spec):.spec;"
-Static StrConstant ks1dFileFilter   = "spec 1D data file (*.dat,*.txt):.dat,.txt;"
-Static StrConstant ksXasFileFilter  = "PF 9809 XAS data file (*.xas):.xas;"
-Static StrConstant ksMcaFileFilter  = "MCA array data file (*.mca,*.dat):.mca,.dat;"
-Static StrConstant ksAllFileFilter  = "All Files:*;"
-
+Constant SPEC_SPEC_DATA_FILE_FORMAT = 1
+Constant SPEC_1D_FILE_FORMAT        = 2
+Constant SPEC_PF9809_FILE_FORMAT    = 3
+Constant SPEC_MCA_ARRAY_FILE_FORMAT = 4
 
 Menu "Load Waves"
 	"-"
-	"Load SPEC Scan Files...",  /Q, SPEC_openSpecFileDialog()
-	"Load 1D Files...",         /Q, SPEC_open1DFileDialog()
-	"Load PF9809 XAS Files...", /Q, SPEC_openXasFileDialog()
-	"Load MCA Array Files...",  /Q, SPEC_openMcaFileDialog()
+	"Load SPEC Scan Files...",  /Q, SPEC_openFilesDialog(SPEC_SPEC_DATA_FILE_FORMAT)
+	"Load 1D Files...",         /Q, SPEC_openFilesDialog(SPEC_1D_FILE_FORMAT)
+	"Load PF9809 XAS Files...", /Q, SPEC_openFilesDialog(SPEC_PF9809_FILE_FORMAT)
+	"Load MCA Array Files...",  /Q, SPEC_openFilesDialog(SPEC_MCA_ARRAY_FILE_FORMAT)
 End
 
 Menu "Macros"
@@ -90,7 +88,7 @@ Static Function BeforeFileOpenHook(refNum, fileNameStr, pathNameStr, fileTypeStr
 	// This function must return 1 in order to prevent Igor from trying to load the file in a built-in manner.
 	String extension = ParseFilePath(4, fileNameStr, ":", 0, 0)
 	if (fileKind == 0 && stringmatch(extension, "spec"))
-		return (SPEC_loadSpecScanFile(fileNameStr, pathNameStr) == 0)
+		return (SPEC_loadDataFile(fileNameStr, pathNameStr, SPEC_SPEC_DATA_FILE_FORMAT) == 0)
 //	elseif (fileKind == 7 && stringmatch(extension, "dat"))
 //		return (SPEC_loadSpec1DFile(fileNameStr, pathNameStr) == 0)
 	else
@@ -98,246 +96,111 @@ Static Function BeforeFileOpenHook(refNum, fileNameStr, pathNameStr, fileTypeStr
 	endif
 End
 
-/// @brief Show a Open Dialog for a SPEC file.
-Function SPEC_openSpecFileDialog()
+/// @brief Show a Open Dialog for multiple selection.
+Function SPEC_openFilesDialog(dataFormat)
+	Variable dataFormat
+
 	Variable i, refNum, errno
 	String fileFilter, fileNameList
-	fileFilter = ksScanFileFilter + ks1dFileFilter + ksAllFileFilter
-	Open/D/R/MULT=1/F=fileFilter refNum
-	errno = 0
-	fileNameList = S_fileName
-
-	if (strlen(fileNameList) == 0) // User cancel
-		return -1
-	endif
-
-	for (i = 0; i < ItemsInList(fileNameList, "\r"); i += 1)
-		if (SPEC_loadSpecScanFile(StringFromList(i, fileNameList, "\r"), "") != 0)
-			errno += 1
-		endif
-	endfor
-	
-	return errno
-End
-
-/// @brief Show a Open Dialog for a Text file.
-Function SPEC_open1DFileDialog()
-	Variable i, refNum, errno
-	String fileFilter, fileNameList
-	fileFilter = ks1dFileFilter + ksAllFileFilter
-	Open/D/R/MULT=1/F=fileFilter refNum
-	errno = 0
-	fileNameList = S_fileName
-
-	if (strlen(fileNameList) == 0) // User cancel
-		return -1
-	endif
-
-	for (i = 0; i < ItemsInList(fileNameList, "\r"); i += 1)
-		if (SPEC_load1DFile(StringFromList(i, fileNameList, "\r"), "") != 0)
-			errno += 1
-		endif
-	endfor
-	
-	return errno
-End
-
-/// @brief Show a Open Dialog for a XAS file.
-Function SPEC_openXasFileDialog()
-	Variable i, refNum, errno
-	String fileFilter, fileNameList
-	fileFilter = ksXasFileFilter + ksAllFileFilter
-	Open/D/R/MULT=1/F=fileFilter refNum
-	errno = 0
-	fileNameList = S_fileName
-
-	if (strlen(fileNameList) == 0) // User cancel
-		return -1
-	endif
-
-	for (i = 0; i < ItemsInList(fileNameList, "\r"); i += 1)
-		if (SPEC_loadXasFile(StringFromList(i, fileNameList, "\r"), "") != 0)
-			errno += 1
-		endif
-	endfor
-	
-	return errno
-End
-
-
-/// @brief Show a Open Dialog for a XAS file.
-Function SPEC_openMcaFileDialog()
-	Variable i, refNum, errno
-	String fileFilter, fileNameList
-	fileFilter = ksMcaFileFilter + ksAllFileFilter
-	Open/D/R/MULT=1/F=fileFilter refNum
-	errno = 0
-	fileNameList = S_fileName
-
-	if (strlen(fileNameList) == 0) // User cancel
-		return -1
-	endif
-
-	for (i = 0; i < ItemsInList(fileNameList, "\r"); i += 1)
-		if (WaveExists(SPEC_loadMcaFile(StringFromList(i, fileNameList, "\r"), "")))
-			errno += 1
-		endif
-	endfor
-	
-	return errno
-End
-
-
-
-/// @brief Load a SPEC scan file.
-Function SPEC_loadSpecScanFile(filePath, symbPath)
-	String filePath, symbPath
-	
-	if (strlen(symbPath))
-		printf "[SPEC@%s] Loading SPEC scan file: \"%s\" @ %s\r", time(), filePath, symbPath
+	// Set filter string for open dialog
+	if (dataFormat == SPEC_SPEC_DATA_FILE_FORMAT)
+		fileFilter = "spec scan data file (*.spec):.spec;"
+	elseif (dataFormat == SPEC_1D_FILE_FORMAT)
+		fileFilter = "spec 1D data file (*.dat,*.txt):.dat,.txt;"
+	elseif (dataFormat == SPEC_PF9809_FILE_FORMAT)
+		fileFilter = "PF 9809 XAS data file (*.xas):.xas;"
+	elseif (dataFormat == SPEC_MCA_ARRAY_FILE_FORMAT)
+		fileFilter = "MCA array data file (*.mca,*.dat):.mca,.dat;"
 	else
-		printf "[SPEC@%s] Loading SPEC scan file: \"%s\"\r", time(), filePath
+		Abort "Invalid parameters"
 	endif
 
-	WAVE/WAVE/Z fww = SPEC_IO_loadSpecScanFile(filePath, symbPath)
-	if (!WaveExists(fww))
+	Open/D/R/MULT=1/F=(fileFilter+"All Files:*;") refNum
+	errno = 0
+	fileNameList = S_fileName
+	if (strlen(fileNameList) == 0) // User cancel
+		return -1
+	endif
+
+	for (i = 0; i < ItemsInList(fileNameList, "\r"); i += 1)
+		errno += SPEC_loadDataFile(StringFromList(i, fileNameList, "\r"), "", dataFormat)
+	endfor
+	
+	return errno
+End
+
+
+// Return 0 if succeeded and 1 if failed.
+Function SPEC_loadDataFile(fileNameStr, symbPath, dataFormat)
+	String fileNameStr, symbPath
+	Variable dataFormat
+
+	String typeStr
+	if (dataFormat == SPEC_SPEC_DATA_FILE_FORMAT)
+		typeStr = "spec data"
+	elseif (dataFormat == SPEC_1D_FILE_FORMAT)
+		typeStr = "1D"
+	elseif (dataFormat == SPEC_PF9809_FILE_FORMAT)
+		typeStr = "PF-9809 XAS"
+	elseif (dataFormat == SPEC_MCA_ARRAY_FILE_FORMAT)
+		typeStr = "MCA array"
+	else
+		// typeStr = ""
 		return 1
 	endif
-	
-	if (numpnts(fww) == 1)
-		printf "[SPEC@%s] 1 scan dataset was loaded.\r", time()
-	else
-		printf "[SPEC@%s] %d scan dataset were loaded.\r", time(), numpnts(fww)
-	endif
-	
-	// Postprocess (optionally draw graphs).
-	Variable action = NumVarOrDefault("root:SV_postprocess", 5)
-	doActionSubroutine(fww, action)
 
-	return 0
-End
-
-
-/// @brief Load a SPEC 1D file.
-Function SPEC_load1DFile(filePath, symbPath)
-	String filePath, symbPath
-	
 	if (strlen(symbPath))
-		printf "[SPEC@%s] Loading 1D file: \"%s\" @ %s\r", time(), filePath, symbPath
+		printf "[SPEC@%s] Loading %s file: \"%s\" @ %s\r", time(), typeStr, fileNameStr, symbPath
 	else
-		printf "[SPEC@%s] Loading 1D file: \"%s\"\r", time(), filePath
+		printf "[SPEC@%s] Loading %s file: \"%s\"\r", time(), typeStr, fileNameStr
 	endif
-	
-	WAVE/Z fw = SPEC_IO_load1DFile(filePath, symbPath)
-	if (!WaveExists(fw))
-		print "Error in loading data part."
-		return -1
-	endif
-	
-	printf "[SPEC@%s] 1D wave was loaded.\r", time()
-	
-	Make/FREE/WAVE/N=1 fww
-	fww[0] = fw
 
-	// Postprocess (optionally draw graphs).
-	Variable action = NumVarOrDefault("root:SV_postprocess", 5)
-	doActionSubroutine(fww, action)
-
-	return 0
-End
-
-
-/// @brief Load a PF 9809 XAS file.
-Function SPEC_loadXasFile(filePath, symbPath)
-	String filePath, symbPath
-	
-	if (strlen(symbPath))
-		printf "[SPEC@%s] Loading XAS file: \"%s\" @ %s\r", time(), filePath, symbPath
-	else
-		printf "[SPEC@%s] Loading XAS file: \"%s\"\r", time(), filePath
-	endif
-	
-	WAVE/Z fw = SPEC_IO_loadXasFile(filePath, symbPath)
-	if (!WaveExists(fw))
-		print "Error in loading data part."
-		return -1
-	endif
-	
-	printf "[SPEC@%s] XAS wave was loaded.\r", time()
-	
-	Make/FREE/WAVE/N=1 fww
-	fww[0] = fw
-
-	// Postprocess (optionally draw graphs).
-	Variable action = NumVarOrDefault("root:SV_postprocess", 5)
-	doActionSubroutine(fww, action)
-
-	return 0
-End
-
-/// @brief Load a MCA array file.
-Function/WAVE SPEC_loadMcaFile(filePath, symbPath)
-	String filePath, symbPath
-
-#ifdef SPEC_LOAD_ONE_ROW_DATA_FILE
-	Variable fp, rows, cols
-	String lineStr
-	Open/R/P=$(symbPath)/Z fp as filePath
-	if (V_flag != 0)
-		printf "Loading Error. Failed in opening file: %s.\r", filePath
-		return $""
-	endif
-	rows = 0
-	do
-		FReadLine fp, lineStr
-
-		if (strlen(lineStr) == 0)
-			break
-		elseif (stringmatch(lineStr, "#*"))
-			continue
-		elseif (rows == 0)
-			cols = ItemsInList(lineStr, " ")
-			if (cols <= 0)
-				Close fp
-				printf "Loading Error. Failed in spliting data: %s.\r", filePath
-				return $""
-			endif
-			Make/D/O/N=(cols, 1) SW2_data_mca_tmp0
-			SW2_data_mca_tmp0[][rows] = str2num(StringFromList(p, lineStr, " "))
-			rows += 1
-		else
-			if (cols != ItemsInList(lineStr, " "))
-				Close fp
-				printf "Loading Error. Mismatch of column number: %s.\r", filePath
-				return $""
-			endif
-			Redimension/N=(cols, rows + 1) SW2_data_mca_tmp0
-			SW2_data_mca_tmp0[][rows] = str2num(StringFromList(p, lineStr, " "))
-			rows += 1
+	if (dataFormat == SPEC_SPEC_DATA_FILE_FORMAT)
+		WAVE/WAVE/Z fww = SPEC_IO_loadSpecScanFile(fileNameStr, symbPath)
+		if (!WaveExists(fww))
+			printf "[SPEC@%s] Failed in loading file.\r", time()
+			return 1
 		endif
-	while (1)
-	Close fp
-	WAVE lw_data = SW2_data_mca_tmp0
-#else
-	LoadWave/G/M/D/P=$(symbPath)/N=SW2_data_mca_tmp/Q filePath
-	if (V_flag == 0)
-		printf "Loading Error.\r"
-		return $""
+	elseif (dataFormat == SPEC_1D_FILE_FORMAT)
+		WAVE/Z fw = SPEC_IO_load1DFile(fileNameStr, symbPath)
+		if (WaveExists(fw))
+			Make/WAVE/FREE/N=1 fww
+			fww[0] = fw
+		else
+			printf "[SPEC@%s] Failed in loading file.\r", time()
+			return 1
+		endif
+	elseif (dataFormat == SPEC_PF9809_FILE_FORMAT)
+		WAVE/Z fw = SPEC_IO_loadXasFile(fileNameStr, symbPath)
+		if (WaveExists(fw))
+			Make/WAVE/FREE/N=1 fww
+			fww[0] = fw
+		else
+			printf "[SPEC@%s] Failed in loading file.\r", time()
+			return 1
+		endif
+	elseif (dataFormat == SPEC_MCA_ARRAY_FILE_FORMAT)
+		WAVE/Z fw = SPEC_IO_loadMcaFile(fileNameStr, symbPath)
+		if (WaveExists(fw))
+			Make/WAVE/FREE/N=1 fww
+			fww[0] = fw
+		else
+			printf "[SPEC@%s] Failed in loading file.\r", time()
+			return 1
+		endif
 	endif
-	WAVE lw_data = $StringFromList(0, S_waveNames)
-	MatrixTranspose lw_data
-#endif
 
-	WAVE/Z SW_mcaParam
-	if (WaveExists(SW_mcaParam))
-		SetScale/P x SW_mcaParam[%chOffset], SW_mcaParam[%chSlope], "eV", lw_data
+	if (numpnts(fww) == 1)
+		printf "[SPEC@%s] 1 %s wave was loaded.\r", time(), typeStr
+	else
+		printf "[SPEC@%s] %d %s waves were loaded.\r", time(), numpnts(fww), typeStr
 	endif
 
-	String waveNameStr
-	waveNameStr = ParseFilePath(3, filePath, ":", 0, 0)
-	Duplicate/O lw_data, $waveNameStr
+	// Postprocess (optionally draw graphs).
+	Variable action = NumVarOrDefault("root:SV_postprocess", 5)
+	doActionSubroutine(fww, action)
 
-	return $waveNameStr
+	return 0
 End
 
 

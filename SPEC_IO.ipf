@@ -33,18 +33,14 @@ Function/WAVE SPEC_IO_loadSpecScanFile(filePath, symbPath)
 
 	SetScale d  0, 0, "dat", fw_scanDate
 
-	Variable lineInd, blockNum, isInBlock, scanInd, cols, rows
-	String lineStr, scanCmd, waveNameStr
+	Variable lineInd, blockNum, isInBlock, cols, rows
+	String lineStr, waveNameStr
 
-	Variable year, month, day, hour, minute, second
-	String weekdayStr, monthStr
-
-	lineInd = 0
 	blockNum = 0
 	isInBlock = 0
 
 	//	scan file content and separate it to scan blocks.
-	do
+	for (lineInd = 0; 1; lineInd++)
 		FReadLine fp, lineStr
 
 		if (strlen(lineStr) == 0)
@@ -66,15 +62,12 @@ Function/WAVE SPEC_IO_loadSpecScanFile(filePath, symbPath)
 			elseif (stringmatch(lineStr, "#D *"))
 				// only accept the date line (#D ...) just below the scan line (#S ...).
 				if (lineInd == fw_blockStart[blockNum - 1] + 1)
-					sscanf lineStr[3, strlen(lineStr) - 2], "%s %s %d %d:%d:%d %d", weekdayStr, monthStr, day, hour, minute, second, year
-					if (V_flag == 7)
-						month = WhichListItem(monthStr, "Jan;Feb:Mar;Apr;May;Jun;Jul;Aug;Sep;Oct;Nov;Dec;") + 1
-						fw_scanDate[blockNum - 1] = date2secs(year, month, day) + (hour * 60 + minute) * 60 +  second 
-					endif
+					fw_scanDate[blockNum - 1] = getDateTimeValue(lineStr[3, strlen(lineStr) - 2])
 				endif
 
 			// Skip other commend (header) lines
 			elseif (stringmatch(lineStr, "#*"))
+				// do nothing
 
 			// Parse lines that do not start with "#" as a data array
 			else
@@ -83,7 +76,7 @@ Function/WAVE SPEC_IO_loadSpecScanFile(filePath, symbPath)
 					cols = ItemsInList(lineStr, " ")
 					if (cols <= 0)
 						Close fp
-						printf "Loading Error. Failed in spliting data: %s.\r", filePath
+						printf "[SPEC_IO:spec/ERROR] Failed in spliting data: %s.\r", filePath
 						return $""
 					endif
 					sprintf waveNameStr, "%s_%03d", ParseFilePath(3, filePath, ":", 0, 0), blockNum
@@ -95,7 +88,7 @@ Function/WAVE SPEC_IO_loadSpecScanFile(filePath, symbPath)
 				else
 					if (cols != ItemsInList(lineStr, " "))
 						Close fp
-						printf "Loading Error. Mismatch of column number: %s.\r", filePath
+						printf "[SPEC_IO:spec/ERROR] Mismatch of column number: %s.\r", filePath
 						return $""
 					endif
 					Redimension/N=(rows + 1, cols) lw_data
@@ -103,12 +96,13 @@ Function/WAVE SPEC_IO_loadSpecScanFile(filePath, symbPath)
 					rows += 1
 				endif
 #else
-			
+				// do nothing
 #endif
 			endif
-				
 		else
 			// Skip until scan block start if it is out of the scan block
+			Variable scanInd
+			String scanCmd
 			sscanf lineStr, "#S %d %[^\r]", scanInd, scanCmd
 			if (V_flag > 1)
 				Redimension/N=(blockNum + 1) fww
@@ -128,29 +122,28 @@ Function/WAVE SPEC_IO_loadSpecScanFile(filePath, symbPath)
 				isInBlock = 1
 			endif
 		endif
-		lineInd += 1
-	while (1)
+	endfor
 
 	Close fp
 
-	Variable i, j, blockStart, blockEnd
-	String dimLabelStr
-
+	Variable blockInd
 	// Variable blockStartPrev, scanIndPrev
 	// blockStartPrev = 0
 	// scanIndPrev = 0
+	for (blockInd = 0; blockInd < blockNum; blockInd += 1)
+		Variable dataWaveInd, blockStart, blockEnd, scanDate //, scanInd
+		String dimLabelStr //, scanCmd
 
-	for (i = 0; i < blockNum; i += 1)
-		Variable dataWaveInd
-		blockStart = fw_blockStart[i]
-		blockEnd   = fw_blockEnd[i]
-		scanInd    = fw_scanInd[i]
-		dimLabelStr = ftw_dimLabel[i]
-		scanCmd     = ftw_scanCmd[i]
+		blockStart  = fw_blockStart[blockInd]
+		blockEnd    = fw_blockEnd[blockInd]
+		scanInd     = fw_scanInd[blockInd]
+		scanDate    = fw_scanDate[blockInd]
+		dimLabelStr = ftw_dimLabel[blockInd]
+		scanCmd     = ftw_scanCmd[blockInd]
 
 		// set the wave name to be saved
 //#ifdef IGNORES_SCAN_INDEX
-		dataWaveInd = i + 1
+		dataWaveInd = blockInd + 1
 //#else
 //		if (scanInd <= scanIndPrev)
 //			printf "Scan number is not incremental (prev: #%d at line %d, curr: #%d at line %d). ", scanIndPrev, blockStartPrev + 1, scanInd, blockStart + 1
@@ -163,22 +156,23 @@ Function/WAVE SPEC_IO_loadSpecScanFile(filePath, symbPath)
 		sprintf waveNameStr, "%s_%03d", ParseFilePath(3, filePath, ":", 0, 0), dataWaveInd
 
 #ifdef SPEC_LOAD_ONE_ROW_DATA_FILE
-		WAVE lw_data = fww[i]
+		WAVE lw_data = fww[blockInd]
 #else
-		// load wave
+		// Load wave
 		LoadWave/G/W/M/L={0, blockStart, (blockEnd - blockStart), 0, 0}/D/N=tmp_spec_wave/O/Q/P=$symbPath filePath
 		if (V_flag == 0)
-			printf "Spec Loading Error at scan block #%d (line between %d--%d).\r", i + 1, blockStart + 1, blockEnd + 1
+			printf "[SPEC_IO:spec/ERROR] No wave loaded by 'LoadWave' from scan #%d, lines between %d--%d.\r", scanInd, blockStart + 1, blockEnd + 1
 			continue
 		endif
 		Duplicate/O $(StringFromList(0, S_waveNames)), $(waveNameStr)
 		KillWaves/Z $(StringFromList(0, S_waveNames))
 		WAVE lw_data = $(waveNameStr)
-		fww[i] = lw_data
+		fww[blockInd] = lw_data
 #endif
 
 		// add column labels
 		if (strlen(dimLabelStr) > 0)
+			Variable j
 			dimLabelStr = ReplaceString("  ", ReplaceString("    ", dimLabelStr, ";"), ";")
 			for (j = 0; j < ItemsInList(dimLabelStr) && j < DimSize(lw_data, 1); j += 1)
 				SetDimLabel 1, j, $(StringFromList(j, dimLabelStr)), lw_data
@@ -198,7 +192,7 @@ Function/WAVE SPEC_IO_loadSpecScanFile(filePath, symbPath)
 		// add time stamp and information to the wave note
 //		SFWave_setValueForKey(lw_data, "key", "value")
 		String tmpStr
-		sprintf tmpStr, "COMMAND: %s\rSCAN DATE: %sT%s\rSCAN NUMBER: %d\r", ftw_scanCmd[i], Secs2Date(fw_scanDate[i], -2), Secs2Time(fw_scanDate[i], 3), fw_scanInd[i]
+		sprintf tmpStr, "COMMAND: %s\rSCAN DATE: %sT%s\rSCAN NUMBER: %d\r", scanCmd, Secs2Date(scanDate, -2), Secs2Time(scanDate, 3), scanInd
 		Note/K lw_data, tmpStr
 	endfor
 
@@ -385,9 +379,8 @@ Function/WAVE SPEC_IO_load1DFile(filePath, symbPath)
 	sprintf waveNameStr, "%s_1D", ParseFilePath(3, filePath, ":", 0, 0)
 	
 	LoadWave/G/M/L={1, 2, 0, 0, 0}/D/N=tmp_1d_wave/O/Q/P=$symbPath filePath
-	
 	if (V_flag == 0)
-		printf "1D Loading Error.\r"
+		printf "[SPEC_IO:1d/ERROR] No wave loaded by 'LoadWave'.\r"
 		return $""
 	endif
 	Duplicate/O $(StringFromList(0, S_waveNames)), $(waveNameStr)
@@ -413,9 +406,8 @@ Function/WAVE SPEC_IO_load2DTextFile(filePath, symbPath)
 	sprintf waveNameStr, "%s", ParseFilePath(3, filePath, ":", 0, 0)
 	
 	LoadWave/G/M/D/N=tmp_general_text_wave/O/Q/P=$symbPath filePath
-	
 	if (V_flag == 0)
-		printf "1D Loading Error.\r"
+		printf "[SPEC_IO:2d/ERROR] No wave loaded by 'LoadWave'.\r"
 		return $""
 	endif
 	Duplicate/O $(StringFromList(0, S_waveNames)), $(waveNameStr)
@@ -469,7 +461,7 @@ Function/WAVE SPEC_IO_loadXasFile(filePath, symbPath)
 
 	LoadWave/G/M/L={18, 21, 0, 0, 0}/D/N=tmp_1d_wave/O/Q/P=$symbPath filePath
 	if (V_flag == 0)
-		printf "1D Loading Error.\r"
+		printf "[SPEC_IO:xas/ERROR] No wave loaded by 'LoadWave'.\r"
 		return $""
 	endif
 	Duplicate/O $(StringFromList(0, S_waveNames)), $(waveNameStr)
@@ -487,4 +479,87 @@ Function/WAVE SPEC_IO_loadXasFile(filePath, symbPath)
 	lw_data[][n] = log(lw_data[p][4] / lw_data[p][5])
 
 	return lw_data
+End
+
+
+/// @brief Load a MCA array file.
+Function/WAVE SPEC_IO_loadMcaFile(filePath, symbPath)
+	String filePath, symbPath
+
+#ifdef SPEC_LOAD_ONE_ROW_DATA_FILE
+	Variable fp, rows, cols
+	String lineStr
+	Open/R/P=$(symbPath)/Z fp as filePath
+	if (V_flag != 0)
+		printf "[SPEC_IO:mca/ERROR] Failed in opening file: %s.\r", filePath
+		return $""
+	endif
+	rows = 0
+	do
+		FReadLine fp, lineStr
+
+		if (strlen(lineStr) == 0)
+			break
+		elseif (stringmatch(lineStr, "#*"))
+			continue
+		elseif (rows == 0)
+			cols = ItemsInList(lineStr, " ")
+			if (cols <= 0)
+				Close fp
+				printf "[SPEC_IO:mca/ERROR] Failed in spliting data: %s.\r", filePath
+				return $""
+			endif
+			Make/D/O/N=(cols, 1) SW2_data_mca_tmp0
+			SW2_data_mca_tmp0[][rows] = str2num(StringFromList(p, lineStr, " "))
+			rows += 1
+		else
+			if (cols != ItemsInList(lineStr, " "))
+				Close fp
+				printf "[SPEC_IO:mca/ERROR] Mismatch of column number: %s.\r", filePath
+				return $""
+			endif
+			Redimension/N=(cols, rows + 1) SW2_data_mca_tmp0
+			SW2_data_mca_tmp0[][rows] = str2num(StringFromList(p, lineStr, " "))
+			rows += 1
+		endif
+	while (1)
+	Close fp
+	WAVE lw_data = SW2_data_mca_tmp0
+#else
+	LoadWave/G/M/D/P=$(symbPath)/N=SW2_data_mca_tmp/Q filePath
+	if (V_flag == 0)
+		printf "[SPEC_IO:mca/ERROR] No wave loaded by 'LoadWave'.\r"
+		return $""
+	endif
+	WAVE lw_data = $StringFromList(0, S_waveNames)
+	MatrixTranspose lw_data
+#endif
+
+	WAVE/Z SW_mcaParam
+	if (WaveExists(SW_mcaParam))
+		SetScale/P x SW_mcaParam[%chOffset], SW_mcaParam[%chSlope], "eV", lw_data
+	endif
+
+	String waveNameStr
+	waveNameStr = ParsefilePath(3, filePath, ":", 0, 0)
+	Duplicate/O lw_data, $waveNameStr
+
+	return $waveNameStr
+End
+
+
+// Convert a date-time string that appears in a spec data file to a numeric value.
+Static Function getDateTimeValue(dateTimeStr)
+	String dateTimeStr
+
+	Variable year, month, day, hour, minute, second
+	String weekdayStr, monthStr
+
+	sscanf dateTimeStr, "%s %s %d %d:%d:%d %d", weekdayStr, monthStr, day, hour, minute, second, year
+	if (V_flag == 7)
+		month = WhichListItem(monthStr, "Jan;Feb:Mar;Apr;May;Jun;Jul;Aug;Sep;Oct;Nov;Dec;") + 1
+		return date2secs(year, month, day) + (hour * 60 + minute) * 60 + second
+	else
+		return 0
+	endif
 End
