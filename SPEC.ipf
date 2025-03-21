@@ -407,7 +407,12 @@ Function SPEC_fancyTrancesDialog()
 
 	// Prepare an interpolated color table wave.
 	Make/N=(colorCycle, 3)/U/I/FREE M_colors2
-	M_colors2 = interp2d(M_colors, p / (colorCycle - 1) * (DimSize(M_colors, 0) - 1), q)
+	if (colorCycle == 1)
+//		M_colors2 = M_colors[0][q]
+		M_colors2 = interp2d(M_colors, (DimSize(M_colors, 0) - 1) / 2, q)
+	else
+		M_colors2 = interp2d(M_colors, p / (colorCycle - 1) * (DimSize(M_colors, 0) - 1), q)
+	endif
 
 	for (i = 0; i < n; i += 1)
 		traceNameStr = StringFromList(i, traceListStr)
